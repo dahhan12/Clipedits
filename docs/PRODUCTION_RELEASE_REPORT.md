@@ -1,16 +1,19 @@
 # CampaignClipper — Production Release Report
 
 **Scope of this report:** the production-hardening pass. It covers the **P0**
-(launch-critical) work, which is complete and tested, and states plainly what
-remains (P1/P2) and whether the system can honestly be called production-ready.
+(launch-critical) work and the **P1** (reliability/observability/operability)
+work — both complete and tested — and states plainly what remains (P1-9
+advanced tracing, P2) and whether the system can honestly be called
+production-ready.
 
 **Honest verdict up front:** **Not yet production-ready for live public
 posting.** The P0 data-integrity, security, rights, isolation, capability-gating,
-media-safety and rate-limiting work is done and tested, but (a) **no external
-network integration is `LIVE_VERIFIED`** — see `PRODUCTION_READINESS_AUDIT.md` —
-and (b) the P1/P2 items (observability, recovery runbooks, AI evaluation,
-staging, expanded CI) are not yet done. It is suitable for an **internal/staging
-pilot** that prepares drafts and never auto-posts publicly.
+media-safety and rate-limiting work is done and tested, and the P1 AI-evaluation
+harness, observability/graceful-shutdown, encryption rotation, expanded CI, and
+staging-mode guard have landed. But (a) **no external network integration is
+`LIVE_VERIFIED`** — see `PRODUCTION_READINESS_AUDIT.md` — and (b) provider
+approvals (TikTok/IG/YouTube) remain outstanding. It is suitable for an
+**internal/staging pilot** that prepares drafts and never auto-posts publicly.
 
 ---
 
@@ -26,10 +29,12 @@ pilot** that prepares drafts and never auto-posts publicly.
 | P0-6 | Media hardening | ffmpeg `shell:false` + hard timeout/kill; `validateMedia` probe-gate (corrupt/dimension/duration/stream caps); temp-dir cleanup; `assertSafeKey` path-traversal guard | Integration (corrupt reject, caps, missing-audio allowed, traversal keys) + real render smoke |
 | P0-7 | Distributed rate limiting | Redis atomic limiter; enforced on login/publish/submit/reparse/download/clipGen/campaignCreate | Integration (limit+block+retry-after; per-key isolation) |
 
-**Test totals:** 58 unit tests + 24 integration tests (real Postgres + Redis +
-ffmpeg). `typecheck`, `lint`, and the production `build` pass. A real end-to-end
-render produces a genuine 1080×1920 H.264/AAC MP4 + thumbnail with 21+ compliance
-checks executing, including the new `sourcePermission=REVIEW` gate.
+**Test totals:** 77 unit tests + 24 integration tests (real Postgres + Redis +
+ffmpeg; integration suites self-skip without those services). `typecheck`,
+`lint`, and the production `build` pass. A real end-to-end render produces a
+genuine 1080×1920 H.264/AAC MP4 + thumbnail with 21+ compliance checks executing,
+including the `sourcePermission=REVIEW` gate. (Unit total includes the P1-8 eval
+and P1-10 envelope suites.)
 
 ## 2. Migrations added
 
@@ -55,20 +60,27 @@ path. Everything third-party is `IMPLEMENTED_NOT_VERIFIED`, `SANDBOX_VERIFIED`,
 - **YouTube** API project **verification** (else private uploads only).
 - **Whop** API key + experience id (or a validated Playwright session).
 
-## 5. Unresolved risks / remaining work (P1 + P2 — NOT done)
+## 5. P1 status (landed & tested) and remaining work
 
-- **P1-8 AI evaluation harness** — there is still no measurement of extraction
-  accuracy or false-PASS rate. "Valid Zod output" ≠ correct. **This is a launch
-  blocker for trusting automated compliance.**
-- **P1-9 Observability & recovery** — no correlation IDs, metrics, tracing, or
-  dead-letter workflow yet; no graceful worker shutdown for in-flight ffmpeg/uploads.
-- **P1-10 Encryption key rotation** — single-version AES key; no rotation runbook.
-- **P1-11 Expanded CI** — no containerised Postgres/Redis CI, migration/backup
-  tests, render golden files, or dependency scan gate.
-- **P1-12 Staging mode** — no separate staging config / prod-credential guard.
+**Done (P1):**
+
+| # | Block | Key changes | Verification |
+| - | ----- | ----------- | ------------ |
+| P1-8 | AI evaluation harness | `src/eval/*` (fields, scoring, 26 fixtures, runner); `npm run eval`; metrics incl. headline **falsePassRate**, criticalFieldAccuracy, contradictionRecall, hallucinationCount, manualReviewRate; thresholds gate; `docs/AI_EVALUATION.md` | Unit (`tests/eval.test.ts`) on fixtures; live eval self-runs against Anthropic when key present, fails only on LIVE miss |
+| P1-9 (core) | Observability & recovery | `registerGracefulShutdown` (SIGTERM/SIGINT drains active jobs via `worker.close()`) wired into all 5 workers; `metrics.ts` (queue depths, job-run stats, pipeline funnel); `/observability` dashboard; per-job `correlationId` + child logger + `durationMs` in `withJobRun` | Manual dashboard; shutdown wired in every worker entrypoint |
+| P1-10 | Encryption key rotation | Versioned envelope format `cc1:<keyId>:…` with keyId bound as GCM AAD; `KeyProvider`/`EnvKeyProvider`; `needsRewrap`; legacy fallback; `scripts/rotate-secrets.ts`; `docs/SECRET_ROTATION.md` | Unit (`tests/envelope.test.ts`: roundtrip, versioned decrypt, AAD-tamper reject, legacy decrypt, rewrap detection) |
+| P1-11 | Expanded CI | `.github/workflows/ci.yml`: containerised Postgres 16 + Redis 7 + ffmpeg; prisma generate + `migrate deploy`; lint, typecheck, unit, integration, build, eval; `npm audit` high-severity gate (prod deps) | Runs the full check suite from a clean checkout |
+| P1-12 | Staging mode | `deployEnv.ts` (`checkDeployment` pure fn, `validateDeploymentEnv`, `appEnv`, `publicPostingAllowedByEnv`, `isProdLikeEnv`); blocks prod approvals in local/CI; requires secrets in staging/prod; called at startup (`instrumentation.ts`) and in every worker; capability gating forces DRAFT off-prod | Unit (deploy-env matrix); enforced at startup |
+
+**Remaining work:**
+
+- **P1-9 (advanced)** — OpenTelemetry distributed tracing; a dedicated
+  dead-letter / terminal-failure workflow (failure categories + safe replay UI);
+  per-provider API latency/error metrics. (Core observability + graceful
+  shutdown are done above.)
 - **P2-13..16** — perceptual/audio duplicate detection (columns exist, logic
   pending), cost/capacity controls & kill switches, operator pre-publication
-  screen with override audit, disaster-recovery validation.
+  screen with override audit, disaster-recovery validation & runbooks.
 - **P0 follow-ups:** queue payloads don't yet carry workspaceId for worker
   re-verification (mitigated: enqueue routes are ownership-checked); rate limiting
   has a coarse per-instance edge layer in addition to the authoritative Redis one.
@@ -91,11 +103,15 @@ path. Everything third-party is `IMPLEMENTED_NOT_VERIFIED`, `SANDBOX_VERIFIED`,
   rolling the app back is safe without a down-migration. If a down-migration is
   required, restore from the pre-deploy Postgres backup (see DR — pending P2-16).
 
-## 8. Monitoring checklist (targets; instrumentation is P1-9, pending)
+## 8. Monitoring checklist
 
-Queue depth & latency per stage · job failure/retry/dead-letter counts · parse
-confidence & manual-review rate · render duration/cost · provider API latency/
-failure · publication/submission status · estimated vs confirmed earnings.
+Instrumented now (P1-9 core): queue depths, job-run success/failure/duration
+stats, and the pipeline funnel are surfaced on `/observability`; every job logs
+a `correlationId` and `durationMs`. Still targets (P1-9 advanced): distributed
+tracing spans, dead-letter counts, and per-provider API latency/failure metrics.
+Remaining business signals to wire dashboards for: parse confidence &
+manual-review rate · render duration/cost · publication/submission status ·
+estimated vs confirmed earnings.
 
 ## 9. Security checklist
 
@@ -105,15 +121,19 @@ failure · publication/submission status · estimated vs confirmed earnings.
 - [x] Multi-tenant isolation on signed URLs, mutations, and reads
 - [x] Rights/provenance gate (no unauthorised media use; unknown → REVIEW)
 - [x] Optimistic concurrency + state machines (no dup publish / stale overwrite)
-- [ ] Encryption key rotation (P1-10) · dependency vuln scan gate (P1-11)
+- [x] Encryption key rotation (P1-10, versioned envelope + rotation script)
+- [x] Dependency vuln scan gate (P1-11, `npm audit` high-severity gate in CI)
 - [ ] Pen-test / external security review
 
 ## 10. Launch blockers (must clear before public, auto-posting launch)
 
 1. No integration is `LIVE_VERIFIED` — verify each against the real provider.
 2. TikTok/IG/YouTube provider approvals outstanding.
-3. AI extraction/compliance accuracy is unmeasured (P1-8).
-4. No production observability or disaster-recovery validation (P1-9, P2-16).
+3. AI extraction/compliance accuracy must be run against the **live** model and
+   meet thresholds — the harness exists (P1-8) but LIVE eval needs the API key
+   and a passing run recorded here.
+4. Disaster-recovery validation and runbooks outstanding (P2-16); distributed
+   tracing + dead-letter replay outstanding (P1-9 advanced).
 
 **Cleared for:** internal/staging pilot in **draft/manual** mode (no public AUTO
 posting), which the capability gating enforces by default.
