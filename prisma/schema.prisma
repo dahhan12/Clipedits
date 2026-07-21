@@ -1,0 +1,385 @@
+// CampaignClipper Prisma schema.
+// All external/model-derived structured data is validated by Zod before it
+// lands here. Every entity that a retried job could touch has a deterministic
+// unique key so work is never performed twice.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum CampaignSource {
+  CONTENT_REWARDS
+  WHOP_FORUM
+}
+
+enum CampaignStatus {
+  DISCOVERED
+  PARSING
+  PARSED
+  NEEDS_MANUAL_REVIEW
+  ACTIVE
+  PAUSED
+  CLOSED
+  ERROR
+}
+
+enum RuleStatus {
+  PARSED
+  NEEDS_MANUAL_REVIEW
+}
+
+enum ResourceKind {
+  DIRECT_VIDEO
+  GOOGLE_DRIVE_FILE
+  GOOGLE_DRIVE_FOLDER
+  DROPBOX_FILE
+  DROPBOX_FOLDER
+  YOUTUBE
+  DOCUMENT
+  OTHER
+}
+
+enum ResourceStatus {
+  DISCOVERED
+  APPROVED
+  REJECTED
+  DOWNLOADED
+  FAILED
+}
+
+enum AssetStatus {
+  PENDING
+  DOWNLOADING
+  READY
+  FAILED
+}
+
+enum ClipStatus {
+  CANDIDATE
+  REJECTED
+  APPROVED
+  RENDERING
+  RENDERED
+  FAILED
+}
+
+enum Platform {
+  TIKTOK
+  INSTAGRAM_REELS
+  YOUTUBE_SHORTS
+}
+
+enum ComplianceOutcome {
+  PASS
+  FAIL
+  REVIEW
+}
+
+enum PublicationMode {
+  AUTO
+  DRAFT
+  MANUAL
+}
+
+enum PublicationStatus {
+  PENDING
+  DRAFTED
+  PUBLISHED
+  FAILED
+  SKIPPED
+}
+
+enum SubmissionStatus {
+  PREPARED
+  AWAITING_CONFIRMATION
+  SUBMITTED
+  APPROVED
+  REJECTED
+  FAILED
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+}
+
+enum Role {
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+// ---------------------------------------------------------------------------
+// Campaign core
+// ---------------------------------------------------------------------------
+
+model Campaign {
+  id           String         @id @default(cuid())
+  source       CampaignSource
+  externalId   String
+  title        String?
+  sourceUrl    String
+  status       CampaignStatus @default(DISCOVERED)
+  // Latest observed page hash (drift detection lives on CampaignRevision).
+  lastPageHash String?
+  discoveredAt DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  revisions   CampaignRevision[]
+  rules       CampaignRule[]
+  resources   CampaignResource[]
+  sourceAssets SourceAsset[]
+  submissions CampaignSubmission[]
+
+  @@unique([source, externalId])
+  @@index([status])
+}
+
+model CampaignRevision {
+  id         String   @id @default(cuid())
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId String
+  // Stable hash of the normalized campaign page used to detect revisions.
+  pageHash   String
+  // Raw captured snapshot (HTML/text) kept for auditing extractions.
+  rawSnapshot String?
+  budgetTotal     Float?
+  budgetRemaining Float?
+  status          String?
+  capturedAt DateTime @default(now())
+
+  @@unique([campaignId, pageHash])
+  @@index([campaignId, capturedAt])
+}
+
+model CampaignRule {
+  id         String     @id @default(cuid())
+  campaign   Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId String
+  status     RuleStatus @default(PARSED)
+  // The Zod-validated CampaignRules payload.
+  rules      Json
+  confidence Float
+  // Fields the model flagged as uncertain/contradictory.
+  uncertainties Json?
+  model      String?
+  createdAt  DateTime   @default(now())
+
+  compliance ComplianceResult[]
+
+  @@index([campaignId, createdAt])
+}
+
+model CampaignResource {
+  id         String         @id @default(cuid())
+  campaign   Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId String
+  kind       ResourceKind
+  url        String
+  status     ResourceStatus @default(DISCOVERED)
+  // Whether the campaign expressly permits pulling from this source.
+  permitted  Boolean        @default(false)
+  notes      String?
+  createdAt  DateTime       @default(now())
+
+  sourceAssets SourceAsset[]
+
+  @@unique([campaignId, url])
+}
+
+// ---------------------------------------------------------------------------
+// Assets & clips
+// ---------------------------------------------------------------------------
+
+model SourceAsset {
+  id           String            @id @default(cuid())
+  campaign     Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId   String
+  resource     CampaignResource? @relation(fields: [resourceId], references: [id])
+  resourceId   String?
+  // Original source URL/identifier the asset was pulled from.
+  originalSource String
+  storageKey   String?
+  checksum     String
+  mimeType     String?
+  bytes        Int?
+  durationSec  Float?
+  status       AssetStatus       @default(PENDING)
+  downloadedAt DateTime?
+  createdAt    DateTime          @default(now())
+
+  transcript Json?
+  candidates ClipCandidate[]
+
+  @@unique([campaignId, checksum])
+  @@index([status])
+}
+
+model ClipCandidate {
+  id           String     @id @default(cuid())
+  sourceAsset  SourceAsset @relation(fields: [sourceAssetId], references: [id], onDelete: Cascade)
+  sourceAssetId String
+  startSec     Float
+  endSec       Float
+  status       ClipStatus @default(CANDIDATE)
+  rejectionReason String?
+  // Claude scores: hook, clarity, emotional intensity, relevance, standalone.
+  scores       Json?
+  createdAt    DateTime   @default(now())
+
+  rendered RenderedClip[]
+
+  @@index([sourceAssetId, status])
+}
+
+model RenderedClip {
+  id            String     @id @default(cuid())
+  candidate     ClipCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  candidateId   String
+  storageKey    String?
+  width         Int?
+  height        Int?
+  durationSec   Float?
+  videoCodec    String?    @default("h264")
+  audioCodec    String?    @default("aac")
+  // Full description of every transformation applied.
+  renderManifest Json?
+  createdAt     DateTime   @default(now())
+
+  compliance   ComplianceResult[]
+  publications Publication[]
+
+  @@index([candidateId])
+}
+
+// ---------------------------------------------------------------------------
+// Compliance
+// ---------------------------------------------------------------------------
+
+model ComplianceResult {
+  id           String            @id @default(cuid())
+  renderedClip RenderedClip      @relation(fields: [renderedClipId], references: [id], onDelete: Cascade)
+  renderedClipId String
+  rule         CampaignRule?     @relation(fields: [ruleId], references: [id])
+  ruleId       String?
+  check        String
+  outcome      ComplianceOutcome
+  reason       String
+  deterministic Boolean          @default(true)
+  createdAt    DateTime          @default(now())
+
+  @@index([renderedClipId, outcome])
+}
+
+// ---------------------------------------------------------------------------
+// Publishing & submission
+// ---------------------------------------------------------------------------
+
+model SocialAccount {
+  id            String   @id @default(cuid())
+  platform      Platform
+  handle        String
+  externalId    String?
+  // AES-256-GCM encrypted OAuth refresh token. Never stored in plaintext.
+  encryptedRefreshToken String?
+  scopes        String?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  publications Publication[]
+
+  @@unique([platform, handle])
+}
+
+model Publication {
+  id             String            @id @default(cuid())
+  renderedClip   RenderedClip      @relation(fields: [renderedClipId], references: [id], onDelete: Cascade)
+  renderedClipId String
+  account        SocialAccount?    @relation(fields: [accountId], references: [id])
+  accountId      String?
+  platform       Platform
+  mode           PublicationMode
+  status         PublicationStatus @default(PENDING)
+  // Deterministic key to make publish jobs idempotent.
+  idempotencyKey String
+  postUrl        String?
+  externalPostId String?
+  publicVerified Boolean           @default(false)
+  captionText    String?
+  failureReason  String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  submission CampaignSubmission?
+
+  @@unique([renderedClipId, platform, idempotencyKey])
+  @@index([status])
+}
+
+model CampaignSubmission {
+  id            String           @id @default(cuid())
+  campaign      Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId    String
+  publication   Publication      @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+  publicationId String           @unique
+  status        SubmissionStatus @default(PREPARED)
+  submittedAt   DateTime?
+  approvalState String?
+  rejectionReason String?
+  qualifiedViews Int?
+  estimatedEarnings Float?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@unique([campaignId, publicationId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Operations
+// ---------------------------------------------------------------------------
+
+model JobRun {
+  id        String    @id @default(cuid())
+  queue     String
+  // Deterministic per-unit-of-work key guaranteeing idempotent processing.
+  jobKey    String
+  status    JobStatus @default(QUEUED)
+  attempts  Int       @default(0)
+  error     String?
+  payload   Json?
+  startedAt DateTime?
+  finishedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@unique([queue, jobKey])
+  @@index([status])
+}
+
+model AuditEvent {
+  id         String   @id @default(cuid())
+  actor      String   @default("system")
+  role       Role?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}

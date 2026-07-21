@@ -1,0 +1,16 @@
+node_modules/
+.next/
+out/
+build/
+dist/
+coverage/
+*.log
+.env
+.env.local
+.env.*.local
+prisma/*.db
+src/generated/
+.DS_Store
+tmp/
+storage/
+playwright-state/
