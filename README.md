@@ -9,10 +9,14 @@ campaign submissions.
 > (1); resource ingestion, transcription, clip candidates (2); 9:16 rendering
 > (FFmpeg + Remotion) and the deterministic compliance engine (3); OAuth + draft
 > publishing to TikTok / Instagram Reels / YouTube Shorts (4); campaign
-> submission and performance tracking (5). External integrations use adapters
-> with sandbox modes; their interfaces and DB persistence are complete. See
-> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), the full
-> [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md), and the
+> submission and performance tracking (5). A **full-parity pass** against the
+> spec is also complete: manual campaign entry, rule review + revision compare,
+> enriched schema + 3-band confidence, metrics/earnings, profitability scoring,
+> rendering polish (loudnorm/thumbnails/animated captions), auth + CSRF +
+> rate-limiting + signed URLs, Whisper, and document upload. External
+> integrations use adapters with sandbox modes; their interfaces and DB
+> persistence are complete. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md),
+> the full [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md), and
 > [`docs/GAP_ANALYSIS.md`](docs/GAP_ANALYSIS.md) (implemented vs. remaining).
 
 ## Stack

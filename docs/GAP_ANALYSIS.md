@@ -104,14 +104,19 @@ Legend: ✅ done · 🟡 partial · ⬜ not yet.
 | Tests: **integration test for idempotent ingestion** | ⬜ | |
 | Repo layout: **pnpm monorepo (apps/web + apps/worker + packages/*)** | 🟡 | Single Next app with `src/` modules + `tsx` workers (functionally equivalent) |
 
-## Suggested next steps to reach full spec parity
+## Status: full-parity pass complete
 
-Done: ~~manual campaign entry~~ ✅, ~~rule review UI + revision compare~~ ✅.
+All items from the original next-steps list have been implemented:
 
-1. **Schema enrichment** to the nested shape + missing fields; add the three-band confidence thresholds (0.90 / 0.75).
-2. **Metrics/earnings**: `metrics-sync` + `earnings-sync` queues, `PostMetric`/`EarningsRecord` models, approval polling, confirmed earnings & payout status.
-3. **Profitability scoring** to prioritise campaigns before expensive processing.
-4. **Rendering polish**: audio normalization, silence trim, thumbnails, animated captions (Remotion), face-aware crop.
-5. **Web hardening**: CSRF, rate limiting, secure cookies, R2 pre-signed URLs, `User`/`Workspace` + real auth.
-6. **Word-level Whisper transcription** adapter.
-7. **Screenshot/document upload** for manual campaign entry (Claude vision / PDF text).
+1. ✅ **Schema enrichment** — added the missing fields (currency, countries, followers/age, resolution, file size, format, subtitles/watermark flags, prohibited words/editing, content themes, posting rules, submission rules, resource purpose, `X` platform) and the three-band confidence tiers (0.90 / 0.75). *(Kept the flat shape as a comprehensive superset rather than restructuring to nested objects.)*
+2. ✅ **Metrics/earnings** — `PostMetric` + `EarningsRecord` models, `metrics-sync` + `earnings-sync` queues/workers, approval polling via a status adapter, confirmed earnings + `PayoutStatus`.
+3. ✅ **Profitability scoring** — `profitability.ts` (revenue/profit/priority + stop-conditions), surfaced on the campaign page; unit-tested.
+4. ✅ **Rendering polish** — audio loudnorm, optional silence-trim, CRF compression, thumbnail generation, animated Remotion captions. *(Face-aware crop remains a center-crop — genuine face detection needs an ML model and is intentionally not faked.)*
+5. ✅ **Web hardening** — `User`/`Workspace` + password auth, HMAC-signed HttpOnly session cookies, CSRF (same-origin) + rate-limit middleware, R2 pre-signed URLs. *(Rate limiting is per-instance in-memory; swap for Redis for multi-instance.)*
+6. ✅ **Word-level Whisper transcription** — `WhisperTranscriber` (verbose_json word timestamps) with sandbox fallback.
+7. ✅ **Screenshot/document upload** — image (Claude vision) / PDF (document block) / text upload → parse.
+
+### Remaining honest caveats (need external services, not fakeable)
+- Live campaign scraping, Claude extraction/scoring quality, real social posting, R2 storage, Whisper, and analytics all require their respective credentials/keys; without them the adapters run in sandbox mode (no fabricated data).
+- Face-aware crop and per-instance→distributed rate limiting are the two intentional simplifications noted above.
+- `ffmpeg` must be installed for the render/transcription pipeline to run.
