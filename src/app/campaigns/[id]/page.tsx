@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { ReparseButton, DownloadResourcesButton } from "@/components/ActionButtons";
 import { RuleEditor } from "@/components/RuleEditor";
 import { CampaignRulesSchema } from "@/lib/schemas/campaign";
+import { scoreCampaign, shouldProcess } from "@/services/scoring/profitability";
 
 export const dynamic = "force-dynamic";
 
@@ -86,6 +87,34 @@ export default async function CampaignDetailPage({
             </table>
             <RuleEditor campaignId={campaign.id} initialRules={rules} />
           </div>
+
+          {(() => {
+            const p = scoreCampaign(rules);
+            const decision = shouldProcess(rules, campaign.status);
+            return (
+              <div className="card">
+                <h3>Profitability</h3>
+                <table>
+                  <tbody>
+                    <Row k="Effective CPM" v={p.effectiveCpm} />
+                    <Row k="Expected qualified views" v={p.expectedQualifiedViews} />
+                    <Row k="Estimated revenue" v={`$${p.estimatedRevenue.toFixed(2)}`} />
+                    <Row k="Estimated profit" v={`$${p.estimatedProfit.toFixed(2)}`} />
+                    <Row k="Priority score" v={p.priorityScore} />
+                    <tr>
+                      <th style={{ width: 220 }}>Process?</th>
+                      <td>
+                        <span className={`badge ${decision.process ? "ok" : "bad"}`}>
+                          {decision.process ? "eligible" : "stop"}
+                        </span>{" "}
+                        <span className="muted">{decision.reasons.join("; ")}</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
 
           {rules.uncertainties.length > 0 && (
             <div className="card">

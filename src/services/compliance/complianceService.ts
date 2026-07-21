@@ -34,11 +34,14 @@ export async function evaluateCompliance(renderedClipId: string): Promise<{ outc
   const captions = manifest.success ? manifest.data.captions : {};
   const overlaysApplied = manifest.success ? manifest.data.overlaysApplied : [];
 
-  const [publicationCount, duplicate] = await Promise.all([
+  const captionValues = Object.values(captions as Record<string, string>).filter(Boolean);
+  const [publicationCount, duplicate, duplicateCaption, publicVerified] = await Promise.all([
     prisma.publication.count({
       where: { renderedClip: { candidate: { sourceAsset: { campaignId: campaign.id } } } },
     }),
     hasDuplicate(rendered.candidateId, renderedClipId),
+    hasDuplicateCaption(campaign.id, renderedClipId, captionValues),
+    latestPublicVerified(renderedClipId),
   ]);
 
   const targetPlatforms = (Object.keys(captions) as CampaignPlatform[]).length
@@ -54,11 +57,14 @@ export async function evaluateCompliance(renderedClipId: string): Promise<{ outc
     videoCodec: rendered.videoCodec,
     audioCodec: rendered.audioCodec,
     container: manifest.success ? manifest.data.container : null,
+    bytes: rendered.bytes,
     overlaysApplied,
     captions: captions as Record<string, string>,
     originalSource: rendered.candidate.sourceAsset.originalSource,
     publicationCount,
     duplicate,
+    duplicateCaption,
+    publicVerified,
     targetPlatforms,
     now: new Date(),
   };
@@ -105,4 +111,31 @@ async function hasDuplicate(candidateId: string, renderedClipId: string): Promis
     },
   });
   return count > 0;
+}
+
+/** True if any of these captions was already used by another publication in the campaign. */
+async function hasDuplicateCaption(
+  campaignId: string,
+  renderedClipId: string,
+  captions: string[],
+): Promise<boolean> {
+  if (captions.length === 0) return false;
+  const count = await prisma.publication.count({
+    where: {
+      renderedClipId: { not: renderedClipId },
+      captionText: { in: captions },
+      renderedClip: { candidate: { sourceAsset: { campaignId } } },
+    },
+  });
+  return count > 0;
+}
+
+/** Most recent public-verification state across this clip's publications, if any. */
+async function latestPublicVerified(renderedClipId: string): Promise<boolean | null> {
+  const pub = await prisma.publication.findFirst({
+    where: { renderedClipId, postUrl: { not: null } },
+    orderBy: { updatedAt: "desc" },
+    select: { publicVerified: true },
+  });
+  return pub ? pub.publicVerified : null;
 }

@@ -33,11 +33,14 @@ export interface ComplianceContext {
   videoCodec: string | null;
   audioCodec: string | null;
   container: string | null;
+  bytes: number | null;
   overlaysApplied: AppliedOverlay[];
   captions: Record<string, string>;
   originalSource: string;
   publicationCount: number;
   duplicate: boolean;
+  duplicateCaption: boolean;
+  publicVerified: boolean | null;
   targetPlatforms: CampaignPlatform[];
   now: Date;
 }
@@ -188,6 +191,59 @@ export function checkRemainingBudget(ctx: ComplianceContext): Finding {
   return rem > 0 ? f("remainingBudget", "PASS", `Budget remaining ${rem}`) : f("remainingBudget", "FAIL", "No remaining budget");
 }
 
+export function checkFileSize(ctx: ComplianceContext): Finding {
+  const maxMb = ctx.rules.maximumFileSizeMb;
+  if (maxMb == null) return f("fileSize", "PASS", "No file-size limit");
+  if (ctx.bytes == null) return f("fileSize", "REVIEW", "Rendered file size unknown");
+  const mb = ctx.bytes / (1024 * 1024);
+  return mb <= maxMb
+    ? f("fileSize", "PASS", `${mb.toFixed(1)}MB within ${maxMb}MB`)
+    : f("fileSize", "FAIL", `${mb.toFixed(1)}MB exceeds ${maxMb}MB`);
+}
+
+export function checkProhibitedWords(ctx: ComplianceContext): Finding {
+  const words = ctx.rules.prohibitedWords;
+  if (words.length === 0) return f("prohibitedWords", "PASS", "No prohibited words");
+  const haystack = [...Object.values(ctx.captions), ...ctx.overlaysApplied.map((o) => o.value)]
+    .join(" ")
+    .toLowerCase();
+  const hits = words.filter((w) => new RegExp(`\\b${escapeRe(w.toLowerCase())}\\b`).test(haystack));
+  return hits.length === 0
+    ? f("prohibitedWords", "PASS", "No prohibited words present")
+    : f("prohibitedWords", "FAIL", `Contains prohibited words: ${hits.join(", ")}`);
+}
+
+export function checkDuplicateCaption(ctx: ComplianceContext): Finding {
+  return ctx.duplicateCaption
+    ? f("duplicateCaption", "FAIL", "An identical caption was already used for this campaign")
+    : f("duplicateCaption", "PASS", "No duplicate caption detected");
+}
+
+export function checkMinimumAccountRequirements(ctx: ComplianceContext): Finding {
+  const r = ctx.rules;
+  const hasReq =
+    r.minimumFollowers != null ||
+    r.minimumAccountAgeDays != null ||
+    r.requiredCountries.length > 0 ||
+    r.excludedCountries.length > 0 ||
+    r.accountEligibility.length > 0;
+  if (!hasReq) return f("minimumAccountRequirements", "PASS", "No account requirements");
+  // The connected account's follower/age/country data is not available to the
+  // deterministic layer, so surface for human confirmation rather than guessing.
+  return f("minimumAccountRequirements", "REVIEW", "Account requirements exist; verify the posting account manually");
+}
+
+export function checkPublicPostRequirement(ctx: ComplianceContext): Finding {
+  if (ctx.rules.publicPostRequired !== true) return f("publicPostRequirement", "PASS", "Public post not required");
+  if (ctx.publicVerified === true) return f("publicPostRequirement", "PASS", "Post verified publicly accessible");
+  if (ctx.publicVerified === false) return f("publicPostRequirement", "FAIL", "Post is not publicly accessible");
+  return f("publicPostRequirement", "REVIEW", "Public post required; accessibility not yet verified");
+}
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /** Run every deterministic validator and return all findings. */
 export function runDeterministicChecks(ctx: ComplianceContext): Finding[] {
   return [
@@ -204,8 +260,13 @@ export function runDeterministicChecks(ctx: ComplianceContext): Finding[] {
     checkDeadline(ctx),
     checkMaxPosts(ctx),
     checkDuplicate(ctx),
+    checkDuplicateCaption(ctx),
     checkCampaignStatus(ctx),
     checkRemainingBudget(ctx),
+    checkFileSize(ctx),
+    checkProhibitedWords(ctx),
+    checkMinimumAccountRequirements(ctx),
+    checkPublicPostRequirement(ctx),
   ];
 }
 

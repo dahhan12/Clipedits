@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { prisma } from "@/lib/db/prisma";
@@ -98,6 +98,7 @@ export async function renderCandidate(candidateId: string): Promise<{ renderedCl
   const meta = await probeVideoMeta(outputPath).catch(() => null);
   const width = meta?.width ?? w;
   const height = meta?.height ?? h;
+  const outputBytes = await stat(outputPath).then((s) => s.size).catch(() => null);
 
   const renderKey = `campaigns/${asset.campaignId}/renders/${candidateId}.mp4`;
   await objectStore().putStream(renderKey, createReadStream(outputPath), "video/mp4");
@@ -130,6 +131,7 @@ export async function renderCandidate(candidateId: string): Promise<{ renderedCl
       storageKey: renderKey,
       width,
       height,
+      bytes: outputBytes,
       durationSec: meta?.durationSec ?? candidate.endSec - candidate.startSec,
       videoCodec: meta?.videoCodec ?? "h264",
       audioCodec: meta?.audioCodec ?? "aac",

@@ -251,9 +251,11 @@ model RenderedClip {
   candidate     ClipCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   candidateId   String
   storageKey    String?
+  thumbnailKey  String?
   width         Int?
   height        Int?
   durationSec   Float?
+  bytes         Int?
   videoCodec    String?    @default("h264")
   audioCodec    String?    @default("aac")
   // Full description of every transformation applied.

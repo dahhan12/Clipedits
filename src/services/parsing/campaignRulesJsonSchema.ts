@@ -6,8 +6,11 @@
 
 const platform = {
   type: "string",
-  enum: ["TIKTOK", "INSTAGRAM_REELS", "YOUTUBE_SHORTS", "INSTAGRAM", "YOUTUBE", "OTHER"],
+  enum: ["TIKTOK", "INSTAGRAM_REELS", "YOUTUBE_SHORTS", "INSTAGRAM", "YOUTUBE", "X", "OTHER"],
 };
+const strArray = { type: "array", items: { type: "string" } };
+const nullableBool = { type: ["boolean", "null"] };
+const nullableNum = { type: ["number", "null"] };
 
 export const campaignRulesJsonSchema = {
   type: "object",
@@ -19,6 +22,7 @@ export const campaignRulesJsonSchema = {
     sourceUrl: { type: "string" },
     status: { type: ["string", "null"] },
 
+    currency: { type: "string", description: "ISO currency code, e.g. USD." },
     budgetTotal: { type: ["number", "null"] },
     budgetRemaining: { type: ["number", "null"] },
 
@@ -37,8 +41,13 @@ export const campaignRulesJsonSchema = {
       type: ["string", "null"],
       description: "ISO-8601 datetime with offset, or null if not stated.",
     },
+    campaignEndDate: { type: ["string", "null"], description: "ISO-8601, or null." },
 
-    accountEligibility: { type: "array", items: { type: "string" } },
+    accountEligibility: strArray,
+    minimumFollowers: { type: ["integer", "null"] },
+    minimumAccountAgeDays: { type: ["integer", "null"] },
+    requiredCountries: strArray,
+    excludedCountries: strArray,
 
     requiredVideoDurationSec: {
       type: ["object", "null"],
@@ -52,14 +61,33 @@ export const campaignRulesJsonSchema = {
       type: ["string", "null"],
       description: "e.g. '9:16', or null.",
     },
-    sourceContentRestrictions: { type: "array", items: { type: "string" } },
-    requiredAudio: { type: "array", items: { type: "string" } },
-    requiredHashtags: { type: "array", items: { type: "string" } },
-    requiredMentions: { type: "array", items: { type: "string" } },
-    requiredCaptions: { type: "array", items: { type: "string" } },
-    requiredOverlaysAndLogos: { type: "array", items: { type: "string" } },
-    prohibitedContent: { type: "array", items: { type: "string" } },
+    minimumResolution: { type: ["string", "null"], description: "e.g. '1080x1920'." },
+    maximumFileSizeMb: nullableNum,
+    requiredFormat: { type: ["string", "null"], description: "e.g. 'mp4'." },
+    sourceContentOnly: nullableBool,
+    originalEditingRequired: nullableBool,
+    subtitlesRequired: nullableBool,
+    subtitlesProhibited: nullableBool,
+    watermarkRequired: nullableBool,
+    sourceContentRestrictions: strArray,
+    requiredAudio: strArray,
+    requiredHashtags: strArray,
+    requiredMentions: strArray,
+    requiredCaptions: strArray,
+    requiredOverlaysAndLogos: strArray,
+    prohibitedContent: strArray,
+    prohibitedWords: strArray,
+    prohibitedEditingTechniques: strArray,
+    contentThemes: strArray,
 
+    repostsAllowed: nullableBool,
+    duplicateContentAllowed: nullableBool,
+    paidPromotionAllowed: nullableBool,
+    postMustRemainLiveDays: { type: ["integer", "null"] },
+
+    submissionMethod: { type: ["string", "null"] },
+    publicPostRequired: nullableBool,
+    proofRequired: strArray,
     submissionInstructions: { type: ["string", "null"] },
     resourceLinks: {
       type: "array",
@@ -70,6 +98,7 @@ export const campaignRulesJsonSchema = {
         properties: {
           url: { type: "string" },
           label: { type: "string" },
+          purpose: { type: ["string", "null"] },
           permittedForDownload: { type: "boolean" },
         },
       },

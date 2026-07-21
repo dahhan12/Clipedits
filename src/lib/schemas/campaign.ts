@@ -15,6 +15,7 @@ export const PlatformEnum = z.enum([
   "YOUTUBE_SHORTS",
   "INSTAGRAM",
   "YOUTUBE",
+  "X",
   "OTHER",
 ]);
 export type CampaignPlatform = z.infer<typeof PlatformEnum>;
@@ -39,6 +40,7 @@ export const AspectRatioSchema = z
 export const ResourceLinkSchema = z.object({
   url: z.string().url(),
   label: z.string().optional(),
+  purpose: z.string().nullable().default(null),
   permittedForDownload: z.boolean().default(false),
 });
 export type ResourceLink = z.infer<typeof ResourceLinkSchema>;
@@ -51,6 +53,7 @@ export const CampaignRulesSchema = z.object({
   status: z.string().nullable().default(null),
 
   // Budget
+  currency: z.string().default("USD"),
   budgetTotal: z.number().nonnegative().nullable().default(null),
   budgetRemaining: z.number().nonnegative().nullable().default(null),
 
@@ -64,9 +67,14 @@ export const CampaignRulesSchema = z.object({
 
   // Timing
   deadline: z.string().datetime({ offset: true }).nullable().default(null),
+  campaignEndDate: z.string().datetime({ offset: true }).nullable().default(null),
 
   // Eligibility
   accountEligibility: z.array(z.string()).default([]),
+  minimumFollowers: z.number().int().nonnegative().nullable().default(null),
+  minimumAccountAgeDays: z.number().int().nonnegative().nullable().default(null),
+  requiredCountries: z.array(z.string()).default([]),
+  excludedCountries: z.array(z.string()).default([]),
 
   // Creative requirements
   requiredVideoDurationSec: z
@@ -74,6 +82,14 @@ export const CampaignRulesSchema = z.object({
     .nullable()
     .default(null),
   requiredAspectRatio: AspectRatioSchema.nullable().default(null),
+  minimumResolution: z.string().nullable().default(null),
+  maximumFileSizeMb: z.number().nonnegative().nullable().default(null),
+  requiredFormat: z.string().nullable().default(null),
+  sourceContentOnly: z.boolean().nullable().default(null),
+  originalEditingRequired: z.boolean().nullable().default(null),
+  subtitlesRequired: z.boolean().nullable().default(null),
+  subtitlesProhibited: z.boolean().nullable().default(null),
+  watermarkRequired: z.boolean().nullable().default(null),
   sourceContentRestrictions: z.array(z.string()).default([]),
   requiredAudio: z.array(z.string()).default([]),
   requiredHashtags: z.array(z.string()).default([]),
@@ -81,8 +97,20 @@ export const CampaignRulesSchema = z.object({
   requiredCaptions: z.array(z.string()).default([]),
   requiredOverlaysAndLogos: z.array(z.string()).default([]),
   prohibitedContent: z.array(z.string()).default([]),
+  prohibitedWords: z.array(z.string()).default([]),
+  prohibitedEditingTechniques: z.array(z.string()).default([]),
+  contentThemes: z.array(z.string()).default([]),
+
+  // Posting rules
+  repostsAllowed: z.boolean().nullable().default(null),
+  duplicateContentAllowed: z.boolean().nullable().default(null),
+  paidPromotionAllowed: z.boolean().nullable().default(null),
+  postMustRemainLiveDays: z.number().int().nonnegative().nullable().default(null),
 
   // Submission
+  submissionMethod: z.string().nullable().default(null),
+  publicPostRequired: z.boolean().nullable().default(null),
+  proofRequired: z.array(z.string()).default([]),
   submissionInstructions: z.string().nullable().default(null),
   resourceLinks: z.array(ResourceLinkSchema).default([]),
 
@@ -95,12 +123,30 @@ export const CampaignRulesSchema = z.object({
 export type CampaignRules = z.infer<typeof CampaignRulesSchema>;
 
 /**
+ * Three-band processing tier based on extraction confidence (per spec):
+ *   >= 0.90  AUTO         — eligible for automated processing
+ *   0.75..0.89  ASSETS_ONLY — process assets but require manual rule review
+ *   < 0.75   STOP         — stop the workflow
+ */
+export const CONFIDENCE_AUTO = 0.9;
+export const CONFIDENCE_ASSETS = 0.75;
+
+export type ProcessingTier = "AUTO" | "ASSETS_ONLY" | "STOP";
+
+export function processingTier(confidence: number): ProcessingTier {
+  if (confidence >= CONFIDENCE_AUTO) return "AUTO";
+  if (confidence >= CONFIDENCE_ASSETS) return "ASSETS_ONLY";
+  return "STOP";
+}
+
+/**
  * Decide whether a parsed campaign needs a human. Missing rules do not, by
- * themselves, force review — but low confidence or declared contradictions do.
+ * themselves, force review — but confidence below the AUTO band, declared
+ * uncertainties, or contradictions do.
  */
 export function deriveRuleStatus(
   rules: CampaignRules,
-  confidenceThreshold = 0.6,
+  confidenceThreshold = CONFIDENCE_AUTO,
 ): z.infer<typeof CampaignRuleStatusEnum> {
   if (rules.confidence < confidenceThreshold) return "NEEDS_MANUAL_REVIEW";
   if (rules.uncertainties.length > 0) return "NEEDS_MANUAL_REVIEW";
@@ -109,7 +155,7 @@ export function deriveRuleStatus(
 
 /** A campaign observed during discovery, before parsing. */
 export const DiscoveredCampaignSchema = z.object({
-  source: z.enum(["CONTENT_REWARDS", "WHOP_FORUM"]),
+  source: z.enum(["CONTENT_REWARDS", "WHOP_FORUM", "MANUAL"]),
   externalId: z.string().min(1),
   sourceUrl: z.string().url(),
   title: z.string().optional(),
