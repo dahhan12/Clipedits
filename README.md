@@ -11,7 +11,9 @@ campaign submissions.
 > publishing to TikTok / Instagram Reels / YouTube Shorts (4); campaign
 > submission and performance tracking (5). External integrations use adapters
 > with sandbox modes; their interfaces and DB persistence are complete. See
-> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), the full
+> [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md), and the
+> [`docs/GAP_ANALYSIS.md`](docs/GAP_ANALYSIS.md) (implemented vs. remaining).
 
 ## Stack
 
