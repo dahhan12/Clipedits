@@ -1,10 +1,19 @@
 import { z } from "zod";
 
-/** A single timestamped transcript segment. */
+/** A single word with its timestamps (word-level transcription). */
+export const TranscriptWordSchema = z.object({
+  word: z.string(),
+  startSec: z.number().nonnegative(),
+  endSec: z.number().nonnegative(),
+});
+export type TranscriptWord = z.infer<typeof TranscriptWordSchema>;
+
+/** A single timestamped transcript segment, optionally with word-level timing. */
 export const TranscriptSegmentSchema = z.object({
   startSec: z.number().nonnegative(),
   endSec: z.number().nonnegative(),
   text: z.string(),
+  words: z.array(TranscriptWordSchema).optional(),
 });
 export type TranscriptSegment = z.infer<typeof TranscriptSegmentSchema>;
 

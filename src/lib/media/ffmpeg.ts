@@ -164,6 +164,11 @@ export async function renderClip9x16(opts: RenderClipOptions): Promise<void> {
   await run("ffmpeg", args);
 }
 
+/** Extract a mono 16 kHz WAV audio track (ideal for ASR) from a video. */
+export async function extractAudioWav(videoPath: string, outPath: string): Promise<void> {
+  await run("ffmpeg", ["-y", "-i", videoPath, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", outPath]);
+}
+
 /** Extract a single JPEG thumbnail frame at `atSec` from a video. */
 export async function extractThumbnail(videoPath: string, atSec: number, outPath: string): Promise<void> {
   await run("ffmpeg", [

@@ -67,3 +67,46 @@ export async function extractStructured<T>(opts: ExtractOptions<T>): Promise<unk
   }
   return toolUse.input;
 }
+
+/**
+ * Extract plain campaign text from an uploaded image (screenshot) or PDF using
+ * Claude's vision/document support. Returns "" in sandbox mode (no API key) so
+ * the caller can report that extraction needs a live model rather than
+ * fabricating content.
+ */
+export async function extractTextFromMedia(input: {
+  base64: string;
+  mediaType: string;
+}): Promise<string> {
+  if (isSandbox.anthropic()) {
+    logger.warn("Anthropic sandbox mode: cannot extract text from media");
+    return "";
+  }
+
+  const isPdf = input.mediaType === "application/pdf";
+  const mediaBlock = isPdf
+    ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: input.base64 } }
+    : {
+        type: "image",
+        source: { type: "base64", media_type: input.mediaType, data: input.base64 },
+      };
+
+  // The installed SDK version does not yet type the `document` (PDF) block,
+  // though the API accepts it; cast the content to the SDK's param type.
+  const content = [
+    mediaBlock,
+    { type: "text", text: "Transcribe ALL visible campaign text from this document verbatim. Output only the text, no commentary." },
+  ] as unknown as Anthropic.MessageParam["content"];
+
+  const resp = await getClient().messages.create({
+    model: env.ANTHROPIC_MODEL,
+    max_tokens: 4096,
+    messages: [{ role: "user", content }],
+  });
+
+  return resp.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("\n")
+    .trim();
+}

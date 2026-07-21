@@ -42,6 +42,33 @@ export async function createFromUrl(rawUrl: string): Promise<{ campaignId: strin
 }
 
 /**
+ * Create a manual campaign from an uploaded screenshot/PDF/text document by
+ * extracting its text (Claude vision/document for images & PDFs) and then
+ * parsing that text. Throws if no text could be extracted (e.g. sandbox mode).
+ */
+export async function createFromDocument(input: {
+  bytes: Buffer;
+  mediaType: string;
+  filename?: string;
+  title?: string;
+}): Promise<{ campaignId: string }> {
+  let text: string;
+  if (input.mediaType.startsWith("text/")) {
+    text = input.bytes.toString("utf8");
+  } else if (input.mediaType.startsWith("image/") || input.mediaType === "application/pdf") {
+    const { extractTextFromMedia } = await import("@/lib/ai/anthropic");
+    text = await extractTextFromMedia({ base64: input.bytes.toString("base64"), mediaType: input.mediaType });
+  } else {
+    throw new Error(`Unsupported upload type: ${input.mediaType}`);
+  }
+
+  if (!text || text.trim().length < 20) {
+    throw new Error("Could not extract enough campaign text from the upload (a live model is required for images/PDFs)");
+  }
+  return createFromText({ text, title: input.title ?? input.filename });
+}
+
+/**
  * Create a manual campaign from pasted campaign text (and optional title/URL).
  * The text is stored as the revision snapshot and parsed directly.
  */

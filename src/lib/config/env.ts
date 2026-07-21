@@ -21,6 +21,11 @@ const EnvSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default("claude-sonnet-5"),
 
+  // Whisper-compatible transcription (OpenAI-style /audio/transcriptions).
+  WHISPER_API_URL: z.string().optional(),
+  WHISPER_API_KEY: z.string().optional(),
+  WHISPER_MODEL: z.string().default("whisper-1"),
+
   R2_ACCOUNT_ID: z.string().optional(),
   R2_ACCESS_KEY_ID: z.string().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),
@@ -96,6 +101,7 @@ export const isSandbox = {
   tiktok: () => !getEnv().TIKTOK_CLIENT_KEY || !getEnv().TIKTOK_CLIENT_SECRET,
   instagram: () => !getEnv().INSTAGRAM_APP_ID || !getEnv().INSTAGRAM_APP_SECRET,
   youtube: () => !getEnv().YOUTUBE_CLIENT_ID || !getEnv().YOUTUBE_CLIENT_SECRET,
+  whisper: () => !getEnv().WHISPER_API_URL || !getEnv().WHISPER_API_KEY,
 };
 
 export function downloadAllowedHosts(): string[] {
