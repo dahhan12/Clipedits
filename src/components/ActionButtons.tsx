@@ -105,3 +105,29 @@ export function RegenerateButton({ candidateId }: { candidateId: string }) {
     </span>
   );
 }
+
+export function ConfirmSubmissionButton({ submissionId }: { submissionId: string }) {
+  const { run, pending, msg } = useAction(`/api/submissions/${submissionId}/confirm`);
+  return (
+    <span>
+      <button className="btn" onClick={run} disabled={pending}>
+        {pending ? "Submitting…" : "Confirm & submit"}
+      </button>
+      {msg && <span className="badge bad" style={{ marginLeft: 6 }}>{msg}</span>}
+    </span>
+  );
+}
+
+export function RetryJobButton({ queue, jobKey }: { queue: string; jobKey: string }) {
+  const { run, pending, msg } = useAction(
+    `/api/jobs/retry?queue=${encodeURIComponent(queue)}&jobKey=${encodeURIComponent(jobKey)}`,
+  );
+  return (
+    <span>
+      <button className="btn secondary" onClick={run} disabled={pending}>
+        {pending ? "…" : "Retry"}
+      </button>
+      {msg && <span className="badge bad" style={{ marginLeft: 6 }}>{msg}</span>}
+    </span>
+  );
+}

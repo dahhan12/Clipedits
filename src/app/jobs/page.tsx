@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { RetryJobButton } from "@/components/ActionButtons";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,7 @@ export default async function JobsPage() {
                 <th>Attempts</th>
                 <th>Error</th>
                 <th>When</th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -42,6 +44,7 @@ export default async function JobsPage() {
                   <td>{j.attempts}</td>
                   <td className="muted">{j.error?.slice(0, 80) ?? "—"}</td>
                   <td className="muted">{j.createdAt.toISOString().slice(0, 16).replace("T", " ")}</td>
+                  <td>{j.status === "FAILED" && <RetryJobButton queue={j.queue} jobKey={j.jobKey} />}</td>
                 </tr>
               ))}
             </tbody>

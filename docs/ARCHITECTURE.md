@@ -6,11 +6,21 @@ resources, generates compliant short-form video drafts, prepares/publishes
 them, and tracks the resulting post URLs and campaign submissions.
 
 This document describes the system as designed across all five delivery
-phases. The repository currently implements **Phase 1** (discovery, parsing,
+phases, **all of which are now implemented**: **Phase 1** (discovery, parsing,
 database, dashboard), **Phase 2** (resource ingestion, transcription, clip
-candidate generation), and **Phase 3** (9:16 rendering with FFmpeg + Remotion
-and the deterministic compliance engine), with complete interfaces and DB
-persistence for later phases so nothing has to be re-architected as they land.
+candidate generation), **Phase 3** (9:16 rendering with FFmpeg + Remotion and
+the deterministic compliance engine), **Phase 4** (OAuth + draft publishing to
+TikTok / Instagram Reels / YouTube Shorts), and **Phase 5** (campaign submission
+and performance tracking). External integrations use adapters with sandbox
+modes; their interfaces and database persistence are complete.
+
+**Phase 4–5 flow:** a compliant rendered clip is published via `publish`
+(official API when the account is connected, else a prepared local DRAFT;
+blocked on compliance FAIL; AUTO downgraded to DRAFT on REVIEW or required
+in-app audio/effects) → `submit` records/verifies the post URL and prepares a
+`CampaignSubmission`, stopping at AWAITING_CONFIRMATION until a human confirms
+the on-site Playwright submit → `track` records qualified views and
+deterministically estimated earnings. Every stage is an idempotent `JobRun`.
 
 **Phase 3 flow:** an operator approves a `ClipCandidate` → `render` produces a
 9:16 H.264/AAC MP4 (FFmpeg by default; Remotion composition backend optional,

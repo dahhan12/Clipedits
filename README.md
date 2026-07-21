@@ -5,12 +5,13 @@ validated structured data, download permitted resources, generate compliant
 short-form video drafts, publish/prepare them, and track post URLs and
 campaign submissions.
 
-> **Status: Phases 1–3** — discovery, parsing, database, dashboard (Phase 1);
-> resource ingestion, transcription and clip-candidate generation (Phase 2);
-> 9:16 rendering (FFmpeg + Remotion) and the deterministic compliance engine
-> (Phase 3). Interfaces and DB persistence for Phases 4–5 (publishing,
-> submission) are scaffolded so later phases drop in without re-architecting.
-> See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+> **Status: Phases 1–5 (complete)** — discovery, parsing, database, dashboard
+> (1); resource ingestion, transcription, clip candidates (2); 9:16 rendering
+> (FFmpeg + Remotion) and the deterministic compliance engine (3); OAuth + draft
+> publishing to TikTok / Instagram Reels / YouTube Shorts (4); campaign
+> submission and performance tracking (5). External integrations use adapters
+> with sandbox modes; their interfaces and DB persistence are complete. See
+> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Stack
 
@@ -48,6 +49,8 @@ external call.
 | `npm run worker:discovery` | Discovery + parse BullMQ workers |
 | `npm run worker:pipeline` | Ingest + transcribe + clip BullMQ workers |
 | `npm run worker:render` | Render + compliance BullMQ workers (needs ffmpeg) |
+| `npm run worker:publish` | Publish BullMQ worker (TikTok/IG/YouTube) |
+| `npm run worker:submission` | Submission + tracking BullMQ workers |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
 | `npm run test` | Vitest |
@@ -111,6 +114,33 @@ external call.
 - **Dashboard** — Approval queue (Approve / Reject / Regenerate), Compliance
   results, and a Clip preview page with inline 9:16 video, manifest, captions
   and per-check results.
+
+## What's implemented (Phase 4)
+
+- **Publishing providers** — TikTok (Content Posting API), Instagram Reels
+  (Graph API) and YouTube Shorts (Data API resumable upload). Official APIs are
+  used when the account is connected; otherwise a **local DRAFT is prepared** —
+  never browser-automated posting, never a faked post.
+- **OAuth** — refresh tokens stored **AES-256-GCM encrypted**; access tokens
+  fetched at publish time and never logged.
+- **Modes & safety** — `AUTO / DRAFT / MANUAL`. Publishing is **blocked on any
+  compliance FAIL**; AUTO is **downgraded to DRAFT** when compliance has REVIEWs
+  or the clip requires official in-app audio/stickers/effects. Idempotent on
+  `(clip, platform, mode)`.
+- **Dashboard** — publish controls on the clip preview and a Publications page.
+
+## What's implemented (Phase 5)
+
+- **Submission** — records the post URL + external id, verifies public
+  accessibility where possible, and prepares a `CampaignSubmission`
+  (idempotent). With no official submission API, a **Playwright form-fill**
+  adapter submits — gated behind an explicit **human confirmation** before the
+  final MVP submit.
+- **Tracking** — qualified views from platform analytics (null when no analytics
+  token — never fabricated) and **estimated earnings** derived deterministically
+  from campaign CPM, clamped to min/max payout.
+- **Dashboard** — Submissions (with Confirm & submit), Earnings estimates, and a
+  **Retry failed job** action on the jobs page.
 
 ## Testing
 
