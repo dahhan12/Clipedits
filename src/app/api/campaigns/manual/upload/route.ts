@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { can, currentRole } from "@/lib/security/rbac";
+import { actorFromHeaders } from "@/lib/db/workspaceScope";
 import { createFromDocument } from "@/services/discovery/manualEntryService";
 import { logger } from "@/lib/logging/logger";
 
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
   try {
     const bytes = Buffer.from(await file.arrayBuffer());
     const title = (form?.get("title") as string | null) ?? undefined;
-    const result = await createFromDocument({ bytes, mediaType, filename: file.name, title });
+    const result = await createFromDocument({ bytes, mediaType, filename: file.name, title, workspaceId: actorFromHeaders(await headers()).workspaceId });
     return NextResponse.json({ ok: true, campaignId: result.campaignId });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Failed to process upload";

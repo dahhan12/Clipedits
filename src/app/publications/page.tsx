@@ -1,4 +1,6 @@
+import { headers } from "next/headers";
 import { prisma } from "@/lib/db/prisma";
+import { actorFromHeaders, campaignVisibilityWhere } from "@/lib/db/workspaceScope";
 
 export const dynamic = "force-dynamic";
 
@@ -8,8 +10,10 @@ function statusBadge(status: string) {
 }
 
 export default async function PublicationsPage() {
+  const actor = actorFromHeaders(await headers());
   const publications = await prisma.publication
     .findMany({
+      where: { renderedClip: { candidate: { sourceAsset: { campaign: campaignVisibilityWhere(actor) } } } },
       orderBy: { createdAt: "desc" },
       take: 100,
       include: {

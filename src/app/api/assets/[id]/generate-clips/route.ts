@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { prisma } from "@/lib/db/prisma";
 import { enqueueClip } from "@/lib/queue/queues";
 import { can, currentRole } from "@/lib/security/rbac";
+import { actorFromHeaders, assertAssetAccess } from "@/lib/db/workspaceScope";
 import { rateLimitOr429, clientIp } from "@/lib/security/rateLimit";
 import { audit } from "@/lib/db/audit";
 import { logger } from "@/lib/logging/logger";
@@ -16,6 +17,11 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const __rl = await rateLimitOr429("clipGen", clientIp(await headers()));
   if (__rl) return __rl;
   const { id } = await params;
+  try {
+    await assertAssetAccess(id, actorFromHeaders(await headers()));
+  } catch {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   const asset = await prisma.sourceAsset.findUnique({ where: { id } }).catch(() => null);
   if (!asset) return NextResponse.json({ error: "Asset not found" }, { status: 404 });

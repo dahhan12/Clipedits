@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { ZodError } from "zod";
 import { can, currentRole } from "@/lib/security/rbac";
+import { actorFromHeaders, assertCampaignAccess } from "@/lib/db/workspaceScope";
 import { saveReviewedRules } from "@/services/parsing/ruleReviewService";
 import { logger } from "@/lib/logging/logger";
 
@@ -14,6 +15,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const role = currentRole(await headers());
   if (!can(role, "rule.review")) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const { id } = await params;
+  try {
+    await assertCampaignAccess(id, actorFromHeaders(await headers()));
+  } catch {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   let body: unknown;
   try {

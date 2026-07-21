@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { enqueuePublish } from "@/lib/queue/queues";
 import { can, currentRole } from "@/lib/security/rbac";
+import { actorFromHeaders, assertClipAccess } from "@/lib/db/workspaceScope";
 import { rateLimitOr429, clientIp } from "@/lib/security/rateLimit";
 import { audit } from "@/lib/db/audit";
 import { logger } from "@/lib/logging/logger";
@@ -20,6 +21,11 @@ const BodySchema = z.object({
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const role = currentRole(await headers());
   const { id } = await params;
+  try {
+    await assertClipAccess(id, actorFromHeaders(await headers()));
+  } catch {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   const parsed = BodySchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return NextResponse.json({ error: "Invalid body" }, { status: 400 });

@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import { prisma } from "@/lib/db/prisma";
+import { actorFromHeaders, assertCampaignAccess, WorkspaceForbiddenError } from "@/lib/db/workspaceScope";
 import { ReparseButton, DownloadResourcesButton } from "@/components/ActionButtons";
 import { RuleEditor } from "@/components/RuleEditor";
 import { CampaignRulesSchema } from "@/lib/schemas/campaign";
@@ -13,6 +15,12 @@ export default async function CampaignDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  try {
+    await assertCampaignAccess(id, actorFromHeaders(await headers()));
+  } catch (err) {
+    if (err instanceof WorkspaceForbiddenError) notFound();
+    throw err;
+  }
   const campaign = await prisma.campaign
     .findUnique({
       where: { id },

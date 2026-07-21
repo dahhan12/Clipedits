@@ -1,4 +1,6 @@
+import { headers } from "next/headers";
 import { prisma } from "@/lib/db/prisma";
+import { actorFromHeaders, campaignVisibilityWhere } from "@/lib/db/workspaceScope";
 import { ClipScoresSchema } from "@/lib/schemas/media";
 
 export const dynamic = "force-dynamic";
@@ -11,8 +13,10 @@ function score(value: unknown): string {
 }
 
 export default async function CandidatesPage() {
+  const actor = actorFromHeaders(await headers());
   const candidates = await prisma.clipCandidate
     .findMany({
+      where: { sourceAsset: { campaign: campaignVisibilityWhere(actor) } },
       orderBy: { createdAt: "desc" },
       take: 150,
       include: { sourceAsset: { include: { campaign: true } } },

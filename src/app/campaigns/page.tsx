@@ -1,5 +1,7 @@
+import { headers } from "next/headers";
 import { prisma } from "@/lib/db/prisma";
 import { ManualCampaignForm } from "@/components/ManualCampaignForm";
+import { actorFromHeaders, campaignVisibilityWhere } from "@/lib/db/workspaceScope";
 
 export const dynamic = "force-dynamic";
 
@@ -10,8 +12,10 @@ function statusBadge(status: string) {
 }
 
 export default async function CampaignsPage() {
+  const actor = actorFromHeaders(await headers());
   const campaigns = await prisma.campaign
     .findMany({
+      where: campaignVisibilityWhere(actor),
       orderBy: { discoveredAt: "desc" },
       take: 100,
       include: { _count: { select: { rules: true, resources: true } } },

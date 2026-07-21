@@ -18,14 +18,14 @@ function externalIdFromUrl(url: string): string {
 }
 
 /** Create a manual campaign from a pasted campaign URL and enqueue parsing. */
-export async function createFromUrl(rawUrl: string): Promise<{ campaignId: string }> {
+export async function createFromUrl(rawUrl: string, workspaceId?: string | null): Promise<{ campaignId: string }> {
   const url = await assertSafeUrl(rawUrl);
   const externalId = externalIdFromUrl(url.toString());
   const pageHash = sha256Hex(`manual-url:${url.toString()}`);
 
   const campaign = await prisma.campaign.upsert({
     where: { source_externalId: { source: "MANUAL", externalId } },
-    create: { source: "MANUAL", externalId, sourceUrl: url.toString(), lastPageHash: pageHash, status: "DISCOVERED" },
+    create: { source: "MANUAL", externalId, sourceUrl: url.toString(), lastPageHash: pageHash, status: "DISCOVERED", workspaceId: workspaceId ?? null },
     update: { sourceUrl: url.toString() },
   });
 
@@ -51,6 +51,7 @@ export async function createFromDocument(input: {
   mediaType: string;
   filename?: string;
   title?: string;
+  workspaceId?: string | null;
 }): Promise<{ campaignId: string }> {
   let text: string;
   if (input.mediaType.startsWith("text/")) {
@@ -65,7 +66,7 @@ export async function createFromDocument(input: {
   if (!text || text.trim().length < 20) {
     throw new Error("Could not extract enough campaign text from the upload (a live model is required for images/PDFs)");
   }
-  return createFromText({ text, title: input.title ?? input.filename });
+  return createFromText({ text, title: input.title ?? input.filename, workspaceId: input.workspaceId });
 }
 
 /**
@@ -76,6 +77,7 @@ export async function createFromText(input: {
   text: string;
   title?: string;
   sourceUrl?: string;
+  workspaceId?: string | null;
 }): Promise<{ campaignId: string }> {
   const text = input.text.trim();
   if (text.length < 20) throw new Error("Campaign text is too short to parse");
@@ -86,7 +88,7 @@ export async function createFromText(input: {
 
   const campaign = await prisma.campaign.upsert({
     where: { source_externalId: { source: "MANUAL", externalId } },
-    create: { source: "MANUAL", externalId, title: input.title, sourceUrl, lastPageHash: pageHash, status: "DISCOVERED" },
+    create: { source: "MANUAL", externalId, title: input.title, sourceUrl, lastPageHash: pageHash, status: "DISCOVERED", workspaceId: input.workspaceId ?? null },
     update: { title: input.title, sourceUrl },
   });
 

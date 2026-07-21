@@ -1,10 +1,13 @@
+import { headers } from "next/headers";
 import { prisma } from "@/lib/db/prisma";
+import { actorFromHeaders, campaignVisibilityWhere } from "@/lib/db/workspaceScope";
 
 export const dynamic = "force-dynamic";
 
 export default async function EarningsPage() {
+  const actor = actorFromHeaders(await headers());
   const submissions = await prisma.campaignSubmission
-    .findMany({ include: { campaign: true } })
+    .findMany({ where: { campaign: campaignVisibilityWhere(actor) }, include: { campaign: true } })
     .catch(() => []);
 
   const byCampaign = new Map<

@@ -1,4 +1,6 @@
+import { headers } from "next/headers";
 import { prisma } from "@/lib/db/prisma";
+import { actorFromHeaders, campaignVisibilityWhere } from "@/lib/db/workspaceScope";
 import { GenerateClipsButton } from "@/components/ActionButtons";
 
 export const dynamic = "force-dynamic";
@@ -16,8 +18,10 @@ function fmtBytes(n: number | null): string {
 }
 
 export default async function AssetsPage() {
+  const actor = actorFromHeaders(await headers());
   const assets = await prisma.sourceAsset
     .findMany({
+      where: { campaign: campaignVisibilityWhere(actor) },
       orderBy: { createdAt: "desc" },
       take: 100,
       include: { campaign: true, _count: { select: { candidates: true } } },

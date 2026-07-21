@@ -1,13 +1,16 @@
+import { headers } from "next/headers";
 import { prisma } from "@/lib/db/prisma";
 import { ClipScoresSchema } from "@/lib/schemas/media";
+import { actorFromHeaders, campaignVisibilityWhere } from "@/lib/db/workspaceScope";
 import { ApproveButton, RejectButton, RegenerateButton } from "@/components/ActionButtons";
 
 export const dynamic = "force-dynamic";
 
 export default async function ApprovalQueuePage() {
+  const actor = actorFromHeaders(await headers());
   const candidates = await prisma.clipCandidate
     .findMany({
-      where: { status: "CANDIDATE" },
+      where: { status: "CANDIDATE", sourceAsset: { campaign: campaignVisibilityWhere(actor) } },
       orderBy: { createdAt: "desc" },
       take: 100,
       include: { sourceAsset: { include: { campaign: true } } },

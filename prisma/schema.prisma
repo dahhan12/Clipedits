@@ -181,6 +181,9 @@ model User {
 
 model Campaign {
   id           String         @id @default(cuid())
+  // Tenant boundary. null = shared discovery pool (auto-discovered, untriaged);
+  // a non-null workspace is private to that workspace's users.
+  workspaceId  String?
   source       CampaignSource
   externalId   String
   title        String?
@@ -201,6 +204,7 @@ model Campaign {
 
   @@unique([source, externalId])
   @@index([status])
+  @@index([workspaceId])
 }
 
 model CampaignRevision {

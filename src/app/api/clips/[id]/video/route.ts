@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { headers } from "next/headers";
 import { Readable } from "node:stream";
 import { prisma } from "@/lib/db/prisma";
 import { objectStore } from "@/adapters/storage/objectStore";
+import { actorFromHeaders, assertClipAccess, WorkspaceForbiddenError } from "@/lib/db/workspaceScope";
 import { logger } from "@/lib/logging/logger";
 
 /**
@@ -11,6 +13,15 @@ import { logger } from "@/lib/logging/logger";
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+
+  // Multi-tenant guard: only stream clips the caller's workspace may access.
+  try {
+    await assertClipAccess(id, actorFromHeaders(await headers()));
+  } catch (err) {
+    if (err instanceof WorkspaceForbiddenError) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    throw err;
+  }
+
   const clip = await prisma.renderedClip.findUnique({ where: { id } }).catch(() => null);
   if (!clip?.storageKey) return NextResponse.json({ error: "Not found" }, { status: 404 });
 

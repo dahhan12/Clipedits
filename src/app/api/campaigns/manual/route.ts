@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { z } from "zod";
 import { can, currentRole } from "@/lib/security/rbac";
 import { rateLimitOr429, clientIp } from "@/lib/security/rateLimit";
+import { actorFromHeaders } from "@/lib/db/workspaceScope";
 import { createFromUrl, createFromText } from "@/services/discovery/manualEntryService";
 import { logger } from "@/lib/logging/logger";
 
@@ -27,11 +28,12 @@ export async function POST(req: Request) {
   const parsed = BodySchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return NextResponse.json({ error: "Invalid body" }, { status: 400 });
 
+  const ws = actorFromHeaders(hdrs).workspaceId;
   try {
     const result =
       parsed.data.mode === "url"
-        ? await createFromUrl(parsed.data.url)
-        : await createFromText({ text: parsed.data.text, title: parsed.data.title, sourceUrl: parsed.data.sourceUrl });
+        ? await createFromUrl(parsed.data.url, ws)
+        : await createFromText({ text: parsed.data.text, title: parsed.data.title, sourceUrl: parsed.data.sourceUrl, workspaceId: ws });
     return NextResponse.json({ ok: true, campaignId: result.campaignId });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Failed to create campaign";

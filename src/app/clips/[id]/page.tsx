@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import { prisma } from "@/lib/db/prisma";
+import { actorFromHeaders, assertClipAccess, WorkspaceForbiddenError } from "@/lib/db/workspaceScope";
 import { RenderManifestSchema } from "@/lib/schemas/render";
 import { PublishControls } from "@/components/PublishControls";
 import { computeCapabilities } from "@/services/publishing/capabilityService";
@@ -9,6 +11,12 @@ export const dynamic = "force-dynamic";
 
 export default async function ClipPreviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  try {
+    await assertClipAccess(id, actorFromHeaders(await headers()));
+  } catch (err) {
+    if (err instanceof WorkspaceForbiddenError) notFound();
+    throw err;
+  }
   const clip = await prisma.renderedClip
     .findUnique({
       where: { id },

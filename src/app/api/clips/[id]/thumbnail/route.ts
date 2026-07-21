@@ -1,12 +1,20 @@
 import { NextResponse } from "next/server";
+import { headers } from "next/headers";
 import { Readable } from "node:stream";
 import { prisma } from "@/lib/db/prisma";
 import { objectStore } from "@/adapters/storage/objectStore";
+import { actorFromHeaders, assertClipAccess, WorkspaceForbiddenError } from "@/lib/db/workspaceScope";
 import { logger } from "@/lib/logging/logger";
 
 /** Stream a rendered clip's thumbnail JPEG for the dashboard preview poster. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  try {
+    await assertClipAccess(id, actorFromHeaders(await headers()));
+  } catch (err) {
+    if (err instanceof WorkspaceForbiddenError) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    throw err;
+  }
   const clip = await prisma.renderedClip.findUnique({ where: { id } }).catch(() => null);
   if (!clip?.thumbnailKey) return NextResponse.json({ error: "Not found" }, { status: 404 });
 

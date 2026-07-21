@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import { prisma } from "@/lib/db/prisma";
+import { actorFromHeaders, assertCampaignAccess, WorkspaceForbiddenError } from "@/lib/db/workspaceScope";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +39,12 @@ function diff(a: unknown, b: unknown): Array<{ field: string; from: string; to: 
 
 export default async function RevisionsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  try {
+    await assertCampaignAccess(id, actorFromHeaders(await headers()));
+  } catch (err) {
+    if (err instanceof WorkspaceForbiddenError) notFound();
+    throw err;
+  }
   const campaign = await prisma.campaign
     .findUnique({
       where: { id },

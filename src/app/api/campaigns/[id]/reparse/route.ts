@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { enqueueParse } from "@/lib/queue/queues";
 import { can, currentRole } from "@/lib/security/rbac";
 import { rateLimitOr429, clientIp } from "@/lib/security/rateLimit";
+import { actorFromHeaders, assertCampaignAccess } from "@/lib/db/workspaceScope";
 import { audit } from "@/lib/db/audit";
 import { logger } from "@/lib/logging/logger";
 
@@ -21,6 +22,11 @@ export async function POST(
   if (rl) return rl;
   const { id } = await params;
 
+  try {
+    await assertCampaignAccess(id, actorFromHeaders(hdrs));
+  } catch {
+    return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+  }
   const campaign = await prisma.campaign.findUnique({ where: { id } }).catch(() => null);
   if (!campaign) {
     return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
