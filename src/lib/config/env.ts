@@ -10,6 +10,10 @@ const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_URL: z.string().url().default("http://localhost:3000"),
   ENCRYPTION_KEY: z.string().optional(),
+  // Identifier for the CURRENT encryption key (bump on rotation, e.g. "1"→"2").
+  ENCRYPTION_KEY_ID: z.string().default("1"),
+  // Retired keys still needed to DECRYPT old data, as JSON {"<id>":"<base64>"}.
+  ENCRYPTION_KEYS_RETIRED: z.string().optional(),
   // HMAC secret for signing session cookies. Falls back to ENCRYPTION_KEY.
   SESSION_SECRET: z.string().optional(),
   // Per-IP request budget per minute for mutating API routes.
