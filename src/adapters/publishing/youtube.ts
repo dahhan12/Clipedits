@@ -1,5 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { logger } from "@/lib/logging/logger";
+import { recordProviderCall } from "@/lib/observability/providerMetrics";
 import type { PublishProvider, PublishInput, PublishResult, PostMetrics } from "./types";
 
 /**
@@ -17,7 +18,10 @@ export class YouTubeShortsProvider implements PublishProvider {
     if (!input.accessToken) {
       return { status: "DRAFTED", note: "Prepared local draft (no YouTube credentials connected)." };
     }
+    return recordProviderCall("youtube", `publish:${input.mode}`, () => this.publishLive(input));
+  }
 
+  private async publishLive(input: PublishInput): Promise<PublishResult> {
     const size = (await stat(input.localPath)).size;
     const [title, ...rest] = input.caption.split("\n");
     const privacyStatus = input.mode === "AUTO" ? "public" : "private";

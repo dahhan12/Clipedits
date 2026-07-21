@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { env } from "@/lib/config/env";
 import { logger } from "@/lib/logging/logger";
+import { recordProviderCall } from "@/lib/observability/providerMetrics";
 import { TranscriptSchema, type Transcript } from "@/lib/schemas/media";
 import type { TranscribeInput, Transcriber } from "./types";
 
@@ -25,12 +26,15 @@ export class WhisperTranscriber implements Transcriber {
     form.append("timestamp_granularities[]", "segment");
     form.append("timestamp_granularities[]", "word");
 
-    const resp = await fetch(`${env.WHISPER_API_URL}/audio/transcriptions`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${env.WHISPER_API_KEY}` },
-      body: form,
+    const resp = await recordProviderCall("whisper", "transcribe", async () => {
+      const r = await fetch(`${env.WHISPER_API_URL}/audio/transcriptions`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${env.WHISPER_API_KEY}` },
+        body: form,
+      });
+      if (!r.ok) throw new Error(`Whisper API returned ${r.status}`);
+      return r;
     });
-    if (!resp.ok) throw new Error(`Whisper API returned ${resp.status}`);
 
     const body = (await resp.json()) as {
       language?: string;

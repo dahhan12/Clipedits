@@ -3,6 +3,7 @@ import { redisConnection } from "@/lib/queue/connection";
 import { QUEUE_NAMES } from "@/lib/queue/queues";
 import { withJobRun } from "./jobRun";
 import { registerGracefulShutdown } from "./shutdown";
+import { attachWorkerObservability } from "./deadLetter";
 import { renderCandidate } from "@/services/render/renderService";
 import { evaluateCompliance } from "@/services/compliance/complianceService";
 import { logger } from "@/lib/logging/logger";
@@ -39,13 +40,10 @@ const complianceWorker = new Worker(
   { connection: redisConnection, concurrency: 3 },
 );
 
-for (const [name, w] of [
+attachWorkerObservability([
   ["render", renderWorker],
   ["compliance", complianceWorker],
-] as const) {
-  w.on("completed", (job) => logger.info({ worker: name, jobId: job.id }, "job completed"));
-  w.on("failed", (job, err) => logger.error({ worker: name, jobId: job?.id, err }, "job failed"));
-}
+]);
 
 logger.info("Render + compliance workers started");
 

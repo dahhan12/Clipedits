@@ -1,12 +1,17 @@
 import { getQueueDepths, getJobRunStats, getPipelineFunnel } from "@/lib/observability/metrics";
+import { listDeadLetters } from "@/services/ops/replayService";
+import { getProviderMetrics } from "@/lib/observability/providerMetrics";
+import { ReplayButton } from "@/components/ReplayButton";
 
 export const dynamic = "force-dynamic";
 
 export default async function ObservabilityPage() {
-  const [depths, jobStats, funnel] = await Promise.all([
+  const [depths, jobStats, funnel, deadLetters, providers] = await Promise.all([
     getQueueDepths(),
     getJobRunStats(),
     getPipelineFunnel(),
+    listDeadLetters(50),
+    getProviderMetrics(7),
   ]);
 
   const funnelRows: Array<[string, number]> = [
@@ -88,6 +93,93 @@ export default async function ObservabilityPage() {
                     </span>
                   </td>
                   <td>{s.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="card">
+        <h3>Dead letters</h3>
+        <p className="muted">
+          Jobs whose retries were exhausted, bucketed by failure category. Retryable
+          categories (network / rate-limit / timeout) replay directly; others require a
+          deliberate force override, which is audited.
+        </p>
+        {deadLetters.length === 0 ? (
+          <p className="muted">No dead-lettered jobs. 🎉</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Queue</th>
+                <th>Job key</th>
+                <th>Category</th>
+                <th>Error</th>
+                <th>When</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {deadLetters.map((d) => (
+                <tr key={d.id}>
+                  <td>{d.queue}</td>
+                  <td className="muted" style={{ maxWidth: 220, overflowWrap: "anywhere" }}>{d.jobKey}</td>
+                  <td>
+                    <span className={`badge ${d.retryable ? "warn" : "bad"}`}>
+                      {d.failureCategory ?? "UNKNOWN"}
+                    </span>
+                  </td>
+                  <td className="muted" style={{ maxWidth: 320, overflowWrap: "anywhere" }}>{d.error}</td>
+                  <td className="muted">{d.deadLetteredAt ? new Date(d.deadLetteredAt).toLocaleString() : "—"}</td>
+                  <td>
+                    <ReplayButton queue={d.queue} jobKey={d.jobKey} retryable={d.retryable} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="card">
+        <h3>Provider API metrics (7d)</h3>
+        <p className="muted">
+          Latency and error rate for external calls (Anthropic, Whisper, publishing
+          platforms). Aggregated per provider + operation; empty until live calls run.
+        </p>
+        {providers.length === 0 ? (
+          <p className="muted">No provider calls recorded yet.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Provider</th>
+                <th>Operation</th>
+                <th>Calls</th>
+                <th>Errors</th>
+                <th>Error rate</th>
+                <th>Avg ms</th>
+                <th>Max ms</th>
+                <th>Last error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {providers.map((p) => (
+                <tr key={`${p.provider}-${p.operation}`}>
+                  <td>{p.provider}</td>
+                  <td className="muted">{p.operation}</td>
+                  <td>{p.calls}</td>
+                  <td>{p.errors ? <span className="badge bad">{p.errors}</span> : 0}</td>
+                  <td>
+                    <span className={`badge ${p.errorRate > 0.1 ? "bad" : p.errorRate > 0 ? "warn" : "ok"}`}>
+                      {(p.errorRate * 100).toFixed(1)}%
+                    </span>
+                  </td>
+                  <td>{p.avgMs}</td>
+                  <td className="muted">{p.maxMs}</td>
+                  <td className="muted" style={{ maxWidth: 280, overflowWrap: "anywhere" }}>{p.lastError ?? "—"}</td>
                 </tr>
               ))}
             </tbody>

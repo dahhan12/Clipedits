@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logging/logger";
+import { recordProviderCall } from "@/lib/observability/providerMetrics";
 import type { PublishProvider, PublishInput, PublishResult, PostMetrics } from "./types";
 
 /**
@@ -22,7 +23,10 @@ export class InstagramReelsProvider implements PublishProvider {
         note: "Instagram ingests by public video_url; publish a public clip URL to post.",
       };
     }
+    return recordProviderCall("instagram", `publish:${input.mode}`, () => this.publishLive(input));
+  }
 
+  private async publishLive(input: PublishInput): Promise<PublishResult> {
     const igUserId = input.accountHandle;
     const containerResp = await fetch(
       `https://graph.facebook.com/v19.0/${encodeURIComponent(igUserId)}/media`,

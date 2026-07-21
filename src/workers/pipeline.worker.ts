@@ -3,6 +3,7 @@ import { redisConnection } from "@/lib/queue/connection";
 import { QUEUE_NAMES } from "@/lib/queue/queues";
 import { withJobRun } from "./jobRun";
 import { registerGracefulShutdown } from "./shutdown";
+import { attachWorkerObservability } from "./deadLetter";
 import { ingestCampaignResources } from "@/services/ingestion/downloadService";
 import { transcribeAsset } from "@/services/pipeline/transcribeService";
 import { generateClipCandidates } from "@/services/pipeline/clipCandidateService";
@@ -50,14 +51,11 @@ const clipWorker = new Worker(
   { connection: redisConnection, concurrency: 2 },
 );
 
-for (const [name, w] of [
+attachWorkerObservability([
   ["ingest", ingestWorker],
   ["transcribe", transcribeWorker],
   ["clip", clipWorker],
-] as const) {
-  w.on("completed", (job) => logger.info({ worker: name, jobId: job.id }, "job completed"));
-  w.on("failed", (job, err) => logger.error({ worker: name, jobId: job?.id, err }, "job failed"));
-}
+]);
 
 logger.info("Pipeline workers (ingest, transcribe, clip) started");
 

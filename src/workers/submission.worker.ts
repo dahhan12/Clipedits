@@ -3,6 +3,7 @@ import { redisConnection } from "@/lib/queue/connection";
 import { QUEUE_NAMES } from "@/lib/queue/queues";
 import { withJobRun } from "./jobRun";
 import { registerGracefulShutdown } from "./shutdown";
+import { attachWorkerObservability } from "./deadLetter";
 import { prepareSubmission } from "@/services/submission/submissionService";
 import { trackSubmission } from "@/services/submission/trackingService";
 import { syncMetrics } from "@/services/submission/metricsService";
@@ -51,15 +52,12 @@ const earningsWorker = new Worker(
   { connection: redisConnection, concurrency: 3 },
 );
 
-for (const [name, w] of [
+attachWorkerObservability([
   ["submit", submitWorker],
   ["track", trackWorker],
   ["metrics-sync", metricsWorker],
   ["earnings-sync", earningsWorker],
-] as const) {
-  w.on("completed", (job) => logger.info({ worker: name, jobId: job.id }, "job completed"));
-  w.on("failed", (job, err) => logger.error({ worker: name, jobId: job?.id, err }, "job failed"));
-}
+]);
 
 logger.info("Submission + tracking workers started");
 

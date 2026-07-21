@@ -29,17 +29,19 @@ approvals (TikTok/IG/YouTube) remain outstanding. It is suitable for an
 | P0-6 | Media hardening | ffmpeg `shell:false` + hard timeout/kill; `validateMedia` probe-gate (corrupt/dimension/duration/stream caps); temp-dir cleanup; `assertSafeKey` path-traversal guard | Integration (corrupt reject, caps, missing-audio allowed, traversal keys) + real render smoke |
 | P0-7 | Distributed rate limiting | Redis atomic limiter; enforced on login/publish/submit/reparse/download/clipGen/campaignCreate | Integration (limit+block+retry-after; per-key isolation) |
 
-**Test totals:** 77 unit tests + 24 integration tests (real Postgres + Redis +
+**Test totals:** 86 unit tests + 31 integration tests (real Postgres + Redis +
 ffmpeg; integration suites self-skip without those services). `typecheck`,
 `lint`, and the production `build` pass. A real end-to-end render produces a
 genuine 1080×1920 H.264/AAC MP4 + thumbnail with 21+ compliance checks executing,
-including the `sourcePermission=REVIEW` gate. (Unit total includes the P1-8 eval
-and P1-10 envelope suites.)
+including the `sourcePermission=REVIEW` gate. (Unit total includes the P1-8 eval,
+P1-10 envelope, and P1-9 failure-classifier suites.)
 
 ## 2. Migrations added
 
 `idempotency_state_versions`, `rights_provenance`, `metrics_and_earnings`
-(earlier), `multitenant_workspace`, plus the pre-existing phase migrations. All
+(earlier), `multitenant_workspace`, `dead_letter_and_provider_stats` (P1-9
+advanced: `DEAD_LETTER` job status, `JobRun.failureCategory`/`deadLetteredAt`/
+`updatedAt`, `ProviderStat` table), plus the pre-existing phase migrations. All
 are recorded in `prisma/migrations`; `prisma migrate status` reports the DB in
 sync. Apply in production with `prisma migrate deploy`.
 
@@ -68,16 +70,19 @@ path. Everything third-party is `IMPLEMENTED_NOT_VERIFIED`, `SANDBOX_VERIFIED`,
 | - | ----- | ----------- | ------------ |
 | P1-8 | AI evaluation harness | `src/eval/*` (fields, scoring, 26 fixtures, runner); `npm run eval`; metrics incl. headline **falsePassRate**, criticalFieldAccuracy, contradictionRecall, hallucinationCount, manualReviewRate; thresholds gate; `docs/AI_EVALUATION.md` | Unit (`tests/eval.test.ts`) on fixtures; live eval self-runs against Anthropic when key present, fails only on LIVE miss |
 | P1-9 (core) | Observability & recovery | `registerGracefulShutdown` (SIGTERM/SIGINT drains active jobs via `worker.close()`) wired into all 5 workers; `metrics.ts` (queue depths, job-run stats, pipeline funnel); `/observability` dashboard; per-job `correlationId` + child logger + `durationMs` in `withJobRun` | Manual dashboard; shutdown wired in every worker entrypoint |
+| P1-9 (advanced) | Dead-letter & provider metrics | `failureCategory.ts` classifier (8 buckets + retryable flag); `handleTerminalFailure` parks exhausted jobs as `DEAD_LETTER` with a category; `replayService` safe replay (non-retryable requires audited force override) + `/api/jobs/replay` (RBAC `job.retry`, CSRF) + dashboard replay UI; `ProviderStat` per-provider latency/error metrics wrapping Anthropic/Whisper/TikTok/IG/YouTube calls, surfaced on `/observability` | Unit (`failureCategory.test.ts`, 9) + integration (`deadLetter.itest.ts`: capture, gating, retryable/force replay, not-found) |
 | P1-10 | Encryption key rotation | Versioned envelope format `cc1:<keyId>:…` with keyId bound as GCM AAD; `KeyProvider`/`EnvKeyProvider`; `needsRewrap`; legacy fallback; `scripts/rotate-secrets.ts`; `docs/SECRET_ROTATION.md` | Unit (`tests/envelope.test.ts`: roundtrip, versioned decrypt, AAD-tamper reject, legacy decrypt, rewrap detection) |
 | P1-11 | Expanded CI | `.github/workflows/ci.yml`: containerised Postgres 16 + Redis 7 + ffmpeg; prisma generate + `migrate deploy`; lint, typecheck, unit, integration, build, eval; `npm audit` high-severity gate (prod deps) | Runs the full check suite from a clean checkout |
 | P1-12 | Staging mode | `deployEnv.ts` (`checkDeployment` pure fn, `validateDeploymentEnv`, `appEnv`, `publicPostingAllowedByEnv`, `isProdLikeEnv`); blocks prod approvals in local/CI; requires secrets in staging/prod; called at startup (`instrumentation.ts`) and in every worker; capability gating forces DRAFT off-prod | Unit (deploy-env matrix); enforced at startup |
 
 **Remaining work:**
 
-- **P1-9 (advanced)** — OpenTelemetry distributed tracing; a dedicated
-  dead-letter / terminal-failure workflow (failure categories + safe replay UI);
-  per-provider API latency/error metrics. (Core observability + graceful
-  shutdown are done above.)
+- **P1-9 (advanced, partial)** — the dead-letter/terminal-failure workflow and
+  per-provider API metrics are **done** (see the table above). Still outstanding:
+  **OpenTelemetry distributed tracing** — deferred deliberately because it needs
+  a collector endpoint (an infra decision), and correlation-id log tracing
+  already threads a single job across stages; wire OTel once a backend
+  (Tempo/Honeycomb/etc.) is chosen.
 - **P2-13..16** — perceptual/audio duplicate detection (columns exist, logic
   pending), cost/capacity controls & kill switches, operator pre-publication
   screen with override audit, disaster-recovery validation & runbooks.
@@ -105,13 +110,13 @@ path. Everything third-party is `IMPLEMENTED_NOT_VERIFIED`, `SANDBOX_VERIFIED`,
 
 ## 8. Monitoring checklist
 
-Instrumented now (P1-9 core): queue depths, job-run success/failure/duration
-stats, and the pipeline funnel are surfaced on `/observability`; every job logs
-a `correlationId` and `durationMs`. Still targets (P1-9 advanced): distributed
-tracing spans, dead-letter counts, and per-provider API latency/failure metrics.
-Remaining business signals to wire dashboards for: parse confidence &
-manual-review rate · render duration/cost · publication/submission status ·
-estimated vs confirmed earnings.
+Instrumented now: queue depths, job-run success/failure/duration stats, the
+pipeline funnel, a **dead-letter table** (with failure category + replay), and
+**per-provider API latency/error-rate** are all surfaced on `/observability`;
+every job logs a `correlationId` and `durationMs`. Still a target: distributed
+tracing spans (OTel — deferred pending a collector choice). Remaining business
+signals to wire dashboards for: parse confidence & manual-review rate · render
+duration/cost · publication/submission status · estimated vs confirmed earnings.
 
 ## 9. Security checklist
 
@@ -133,7 +138,8 @@ estimated vs confirmed earnings.
    meet thresholds — the harness exists (P1-8) but LIVE eval needs the API key
    and a passing run recorded here.
 4. Disaster-recovery validation and runbooks outstanding (P2-16); distributed
-   tracing + dead-letter replay outstanding (P1-9 advanced).
+   tracing (OTel) outstanding (P1-9 advanced) — dead-letter replay and
+   per-provider metrics are done.
 
 **Cleared for:** internal/staging pilot in **draft/manual** mode (no public AUTO
 posting), which the capability gating enforces by default.

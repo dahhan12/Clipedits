@@ -7,6 +7,7 @@ import { runDiscovery } from "@/services/discovery/discoveryService";
 import { parseAndPersist } from "@/services/parsing/parseService";
 import { withJobRun } from "./jobRun";
 import { registerGracefulShutdown } from "./shutdown";
+import { attachWorkerObservability } from "./deadLetter";
 import { logger } from "@/lib/logging/logger";
 import { validateDeploymentEnv } from "@/lib/config/deployEnv";
 
@@ -40,13 +41,10 @@ const parseWorker = new Worker(
   { connection: redisConnection, concurrency: 3 },
 );
 
-for (const [name, w] of [
+attachWorkerObservability([
   ["discovery", discoveryWorker],
   ["parse", parseWorker],
-] as const) {
-  w.on("completed", (job) => logger.info({ worker: name, jobId: job.id }, "job completed"));
-  w.on("failed", (job, err) => logger.error({ worker: name, jobId: job?.id, err }, "job failed"));
-}
+]);
 
 logger.info("Discovery + parse workers started");
 

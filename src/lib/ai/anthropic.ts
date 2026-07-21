@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { env, isSandbox } from "@/lib/config/env";
 import { logger } from "@/lib/logging/logger";
+import { recordProviderCall } from "@/lib/observability/providerMetrics";
 
 /**
  * Thin wrapper around the Anthropic SDK that:
@@ -44,20 +45,22 @@ export async function extractStructured<T>(opts: ExtractOptions<T>): Promise<unk
     return opts.sandboxFallback;
   }
 
-  const resp = await getClient().messages.create({
-    model: env.ANTHROPIC_MODEL,
-    max_tokens: opts.maxTokens ?? 4096,
-    system: opts.system,
-    tools: [
-      {
-        name: opts.toolName,
-        description: opts.toolDescription,
-        input_schema: opts.inputSchema as Anthropic.Tool.InputSchema,
-      },
-    ],
-    tool_choice: { type: "tool", name: opts.toolName },
-    messages: [{ role: "user", content: opts.prompt }],
-  });
+  const resp = await recordProviderCall("anthropic", `extract:${opts.toolName}`, () =>
+    getClient().messages.create({
+      model: env.ANTHROPIC_MODEL,
+      max_tokens: opts.maxTokens ?? 4096,
+      system: opts.system,
+      tools: [
+        {
+          name: opts.toolName,
+          description: opts.toolDescription,
+          input_schema: opts.inputSchema as Anthropic.Tool.InputSchema,
+        },
+      ],
+      tool_choice: { type: "tool", name: opts.toolName },
+      messages: [{ role: "user", content: opts.prompt }],
+    }),
+  );
 
   const toolUse = resp.content.find(
     (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
@@ -98,11 +101,13 @@ export async function extractTextFromMedia(input: {
     { type: "text", text: "Transcribe ALL visible campaign text from this document verbatim. Output only the text, no commentary." },
   ] as unknown as Anthropic.MessageParam["content"];
 
-  const resp = await getClient().messages.create({
-    model: env.ANTHROPIC_MODEL,
-    max_tokens: 4096,
-    messages: [{ role: "user", content }],
-  });
+  const resp = await recordProviderCall("anthropic", "extractTextFromMedia", () =>
+    getClient().messages.create({
+      model: env.ANTHROPIC_MODEL,
+      max_tokens: 4096,
+      messages: [{ role: "user", content }],
+    }),
+  );
 
   return resp.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")

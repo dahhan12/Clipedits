@@ -115,6 +115,8 @@ enum JobStatus {
   SUCCEEDED
   FAILED
   SKIPPED
+  // Retries exhausted; parked for operator triage / replay.
+  DEAD_LETTER
 }
 
 enum PayoutStatus {
@@ -535,13 +537,37 @@ model JobRun {
   status    JobStatus @default(QUEUED)
   attempts  Int       @default(0)
   error     String?
+  // Triage bucket for a DEAD_LETTER run (see failureCategory.ts).
+  failureCategory String?
+  deadLetteredAt  DateTime?
   payload   Json?
   startedAt DateTime?
   finishedAt DateTime?
   createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@unique([queue, jobKey])
   @@index([status])
+  @@index([status, deadLetteredAt])
+}
+
+/// Aggregated per-provider call outcomes (one row per provider+operation+day).
+/// Cross-process visible (workers write, the dashboard reads) without a
+/// high-volume per-call table. Latency is a running sum; avg = totalMs/calls.
+model ProviderStat {
+  id        String   @id @default(cuid())
+  provider  String
+  operation String
+  day       DateTime @db.Date
+  calls     Int      @default(0)
+  errors    Int      @default(0)
+  totalMs   Int      @default(0)
+  maxMs     Int      @default(0)
+  lastError String?
+  lastAt    DateTime @default(now())
+
+  @@unique([provider, operation, day])
+  @@index([provider])
 }
 
 model AuditEvent {

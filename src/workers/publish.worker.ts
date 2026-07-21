@@ -3,6 +3,7 @@ import { redisConnection } from "@/lib/queue/connection";
 import { QUEUE_NAMES } from "@/lib/queue/queues";
 import { withJobRun } from "./jobRun";
 import { registerGracefulShutdown } from "./shutdown";
+import { attachWorkerObservability } from "./deadLetter";
 import { publishClip } from "@/services/publishing/publishService";
 import { logger } from "@/lib/logging/logger";
 import type { Platform, PublicationMode } from "@/generated/prisma";
@@ -31,8 +32,7 @@ const publishWorker = new Worker(
   { connection: redisConnection, concurrency: 2 },
 );
 
-publishWorker.on("completed", (job) => logger.info({ jobId: job.id }, "publish job completed"));
-publishWorker.on("failed", (job, err) => logger.error({ jobId: job?.id, err }, "publish job failed"));
+attachWorkerObservability([["publish", publishWorker]]);
 
 logger.info("Publish worker started");
 

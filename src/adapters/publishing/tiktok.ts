@@ -1,5 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { logger } from "@/lib/logging/logger";
+import { recordProviderCall } from "@/lib/observability/providerMetrics";
 import type { PublishProvider, PublishInput, PublishResult, PostMetrics } from "./types";
 
 /**
@@ -17,7 +18,10 @@ export class TikTokProvider implements PublishProvider {
     if (!input.accessToken) {
       return { status: "DRAFTED", note: "Prepared local draft (no TikTok credentials connected)." };
     }
+    return recordProviderCall("tiktok", `publish:${input.mode}`, () => this.publishLive(input));
+  }
 
+  private async publishLive(input: PublishInput): Promise<PublishResult> {
     const size = (await stat(input.localPath)).size;
     const direct = input.mode === "AUTO";
     const initUrl = direct
