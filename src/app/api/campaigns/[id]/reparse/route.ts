@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { prisma } from "@/lib/db/prisma";
 import { enqueueParse } from "@/lib/queue/queues";
 import { can, currentRole } from "@/lib/security/rbac";
+import { rateLimitOr429, clientIp } from "@/lib/security/rateLimit";
 import { audit } from "@/lib/db/audit";
 import { logger } from "@/lib/logging/logger";
 
@@ -11,10 +12,13 @@ export async function POST(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const role = currentRole(await headers());
+  const hdrs = await headers();
+  const role = currentRole(hdrs);
   if (!can(role, "campaign.reparse")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  const rl = await rateLimitOr429("reparse", clientIp(hdrs));
+  if (rl) return rl;
   const { id } = await params;
 
   const campaign = await prisma.campaign.findUnique({ where: { id } }).catch(() => null);

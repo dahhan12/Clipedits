@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { z } from "zod";
 import { can, currentRole } from "@/lib/security/rbac";
+import { rateLimitOr429, clientIp } from "@/lib/security/rateLimit";
 import { createFromUrl, createFromText } from "@/services/discovery/manualEntryService";
 import { logger } from "@/lib/logging/logger";
 
@@ -17,8 +18,11 @@ const BodySchema = z.union([
 
 /** Manually add a campaign by URL or pasted text. Requires OPERATOR/ADMIN. */
 export async function POST(req: Request) {
-  const role = currentRole(await headers());
+  const hdrs = await headers();
+  const role = currentRole(hdrs);
   if (!can(role, "campaign.create")) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const rl = await rateLimitOr429("campaignCreate", clientIp(hdrs));
+  if (rl) return rl;
 
   const parsed = BodySchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return NextResponse.json({ error: "Invalid body" }, { status: 400 });

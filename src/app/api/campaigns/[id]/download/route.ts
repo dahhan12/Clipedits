@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { prisma } from "@/lib/db/prisma";
 import { enqueueIngest } from "@/lib/queue/queues";
 import { can, currentRole } from "@/lib/security/rbac";
+import { rateLimitOr429, clientIp } from "@/lib/security/rateLimit";
 import { audit } from "@/lib/db/audit";
 import { logger } from "@/lib/logging/logger";
 
@@ -12,6 +13,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   if (!can(role, "resource.download")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  const __rl = await rateLimitOr429("download", clientIp(await headers()));
+  if (__rl) return __rl;
   const { id } = await params;
 
   const campaign = await prisma.campaign.findUnique({ where: { id } }).catch(() => null);

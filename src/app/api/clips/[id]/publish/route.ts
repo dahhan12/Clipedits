@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { enqueuePublish } from "@/lib/queue/queues";
 import { can, currentRole } from "@/lib/security/rbac";
+import { rateLimitOr429, clientIp } from "@/lib/security/rateLimit";
 import { audit } from "@/lib/db/audit";
 import { logger } from "@/lib/logging/logger";
 
@@ -26,6 +27,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const action = mode === "AUTO" ? "publish.now" : "publish.draft";
   if (!can(role, action)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  const rl = await rateLimitOr429("publish", clientIp(await headers()));
+  if (rl) return rl;
 
   const clip = await prisma.renderedClip.findUnique({ where: { id } }).catch(() => null);
   if (!clip) return NextResponse.json({ error: "Rendered clip not found" }, { status: 404 });

@@ -5,10 +5,12 @@ import { NextResponse, type NextRequest } from "next/server";
  *  - CSRF: mutating requests must be same-origin (Origin header must match the
  *    request host). Cross-site form posts (which cannot set Origin freely to a
  *    matching value) are rejected.
- *  - Rate limiting: a per-instance fixed-window counter per client IP.
+ *  - Rate limiting: a coarse per-instance fixed-window counter per client IP.
  *
- * Distributed rate limiting (Redis) can replace the in-memory window later; this
- * is edge-safe and dependency-free.
+ * This edge layer is intentionally coarse (edge runtime cannot use ioredis). The
+ * AUTHORITATIVE, cross-instance limits live in `lib/security/rateLimit.ts` (Redis,
+ * atomic) and are enforced inside sensitive route handlers (login, publish,
+ * submit, reparse, download, clip generation, campaign create).
  */
 
 const WINDOW_MS = 60_000;

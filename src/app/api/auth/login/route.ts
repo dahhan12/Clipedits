@@ -6,11 +6,20 @@ import { createSession, SESSION_COOKIE, SESSION_MAX_AGE_SEC } from "@/lib/securi
 import { audit } from "@/lib/db/audit";
 import { env } from "@/lib/config/env";
 import { logger } from "@/lib/logging/logger";
+import { enforce, clientIp } from "@/lib/security/rateLimit";
 
 const BodySchema = z.object({ email: z.string().email(), password: z.string().min(1) });
 
 /** Password login. On success sets an HttpOnly signed session cookie. */
 export async function POST(req: Request) {
+  const rl = await enforce("login", clientIp(req.headers));
+  if (rl) {
+    return NextResponse.json(
+      { error: "Too many login attempts" },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
+    );
+  }
+
   const parsed = BodySchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return NextResponse.json({ error: "Invalid body" }, { status: 400 });
 
