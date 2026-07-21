@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { RenderManifestSchema } from "@/lib/schemas/render";
+import { PublishControls } from "@/components/PublishControls";
 
 export const dynamic = "force-dynamic";
 
@@ -9,11 +10,17 @@ export default async function ClipPreviewPage({ params }: { params: Promise<{ id
   const clip = await prisma.renderedClip
     .findUnique({
       where: { id },
-      include: { compliance: true, candidate: { include: { sourceAsset: { include: { campaign: true } } } } },
+      include: {
+        compliance: true,
+        publications: { orderBy: { createdAt: "desc" } },
+        candidate: { include: { sourceAsset: { include: { campaign: true } } } },
+      },
     })
     .catch(() => null);
 
   if (!clip) notFound();
+
+  const hasFail = clip.compliance.some((r) => r.outcome === "FAIL");
 
   const manifest = RenderManifestSchema.safeParse(clip.renderManifest);
   const campaign = clip.candidate.sourceAsset.campaign;
@@ -71,6 +78,49 @@ export default async function ClipPreviewPage({ params }: { params: Promise<{ id
               </div>
             </>
           )}
+
+          <div className="card">
+            <h3>Publish</h3>
+            {hasFail ? (
+              <p className="badge bad">Blocked: a compliance check failed. Fix and re-render before publishing.</p>
+            ) : (
+              <PublishControls clipId={clip.id} />
+            )}
+            {clip.publications.length > 0 && (
+              <table style={{ marginTop: 12 }}>
+                <thead>
+                  <tr>
+                    <th>Platform</th>
+                    <th>Mode</th>
+                    <th>Status</th>
+                    <th>Post</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {clip.publications.map((p) => (
+                    <tr key={p.id}>
+                      <td>{p.platform}</td>
+                      <td>{p.mode}</td>
+                      <td>
+                        <span className={`badge ${p.status === "PUBLISHED" ? "ok" : p.status === "FAILED" || p.status === "SKIPPED" ? "bad" : "warn"}`}>
+                          {p.status}
+                        </span>
+                      </td>
+                      <td className="muted">
+                        {p.postUrl ? (
+                          <a href={p.postUrl} target="_blank" rel="noreferrer">
+                            link
+                          </a>
+                        ) : (
+                          p.failureReason?.slice(0, 40) ?? "—"
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
 
           <div className="card">
             <h3>Compliance</h3>

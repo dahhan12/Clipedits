@@ -16,7 +16,9 @@
     "prisma:deploy": "prisma migrate deploy",
     "worker:discovery": "tsx src/workers/discovery.worker.ts",
     "worker:pipeline": "tsx src/workers/pipeline.worker.ts",
-    "worker:render": "tsx src/workers/render.worker.ts"
+    "worker:render": "tsx src/workers/render.worker.ts",
+    "worker:publish": "tsx src/workers/publish.worker.ts",
+    "worker:submission": "tsx src/workers/submission.worker.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

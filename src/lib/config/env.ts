@@ -51,6 +51,23 @@ const EnvSchema = z.object({
   RENDER_HEIGHT: z.string().default("1920").transform((v) => Number.parseInt(v, 10)),
   // Optional chromium path for Remotion (Playwright's is pre-installed here).
   REMOTION_BROWSER_EXECUTABLE: z.string().optional(),
+
+  // --- Publishing OAuth (client credentials only; user tokens live encrypted
+  // in the DB, never in env or logs) ---
+  TIKTOK_CLIENT_KEY: z.string().optional(),
+  TIKTOK_CLIENT_SECRET: z.string().optional(),
+  INSTAGRAM_APP_ID: z.string().optional(),
+  INSTAGRAM_APP_SECRET: z.string().optional(),
+  YOUTUBE_CLIENT_ID: z.string().optional(),
+  YOUTUBE_CLIENT_SECRET: z.string().optional(),
+
+  // --- Submission ---
+  // When true, the final Playwright submission step still requires an explicit
+  // confirmation before it submits (MVP safety). Keep true during the MVP.
+  SUBMISSION_REQUIRE_CONFIRMATION: z
+    .string()
+    .default("true")
+    .transform((v) => v !== "false"),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -70,6 +87,9 @@ export const isSandbox = {
   anthropic: () => !getEnv().ANTHROPIC_API_KEY,
   whopApi: () => !getEnv().WHOP_API_KEY || !getEnv().WHOP_EXPERIENCE_ID,
   r2: () => !getEnv().R2_ENDPOINT || !getEnv().R2_ACCESS_KEY_ID,
+  tiktok: () => !getEnv().TIKTOK_CLIENT_KEY || !getEnv().TIKTOK_CLIENT_SECRET,
+  instagram: () => !getEnv().INSTAGRAM_APP_ID || !getEnv().INSTAGRAM_APP_SECRET,
+  youtube: () => !getEnv().YOUTUBE_CLIENT_ID || !getEnv().YOUTUBE_CLIENT_SECRET,
 };
 
 export function downloadAllowedHosts(): string[] {

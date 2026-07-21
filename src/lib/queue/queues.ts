@@ -39,6 +39,9 @@ export const transcribeQueue = makeQueue(QUEUE_NAMES.transcribe);
 export const clipQueue = makeQueue(QUEUE_NAMES.clip);
 export const renderQueue = makeQueue(QUEUE_NAMES.render);
 export const complianceQueue = makeQueue(QUEUE_NAMES.compliance);
+export const publishQueue = makeQueue(QUEUE_NAMES.publish);
+export const submitQueue = makeQueue(QUEUE_NAMES.submit);
+export const trackQueue = makeQueue(QUEUE_NAMES.track);
 
 /** Enqueue a parse job idempotently keyed on the campaign id. */
 export async function enqueueParse(campaignId: string): Promise<void> {
@@ -68,4 +71,24 @@ export async function enqueueRender(candidateId: string): Promise<void> {
 /** Enqueue compliance evaluation for a rendered clip, idempotent on its id. */
 export async function enqueueCompliance(renderedClipId: string): Promise<void> {
   await complianceQueue.add("evaluate-compliance", { renderedClipId }, { jobId: `compliance:${renderedClipId}` });
+}
+
+/** Enqueue a publish job, idempotent on (clip, platform, mode). */
+export async function enqueuePublish(input: {
+  renderedClipId: string;
+  platform: string;
+  mode: string;
+}): Promise<void> {
+  const jobId = `publish:${input.renderedClipId}:${input.platform}:${input.mode}`;
+  await publishQueue.add("publish-clip", input, { jobId });
+}
+
+/** Enqueue submission preparation/execution for a publication, idempotent on its id. */
+export async function enqueueSubmission(publicationId: string): Promise<void> {
+  await submitQueue.add("prepare-submission", { publicationId }, { jobId: `submit:${publicationId}` });
+}
+
+/** Enqueue performance tracking for a submission, idempotent on its id. */
+export async function enqueueTracking(submissionId: string): Promise<void> {
+  await trackQueue.add("track-submission", { submissionId }, { jobId: `track:${submissionId}` });
 }

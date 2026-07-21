@@ -14,3 +14,4 @@ src/generated/
 tmp/
 storage/
 playwright-state/
+*.tsbuildinfo
