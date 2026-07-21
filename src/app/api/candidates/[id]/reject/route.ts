@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { prisma } from "@/lib/db/prisma";
 import { can, currentRole } from "@/lib/security/rbac";
 import { audit } from "@/lib/db/audit";
+import { transition } from "@/lib/db/guardedTransition";
 
 /** Reject a clip candidate. Requires OPERATOR/ADMIN. */
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -13,10 +14,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const candidate = await prisma.clipCandidate.findUnique({ where: { id } }).catch(() => null);
   if (!candidate) return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
 
-  await prisma.clipCandidate.update({
-    where: { id },
-    data: { status: "REJECTED", rejectionReason: "Rejected by operator" },
-  });
+  await transition.clipCandidate(id, "REJECTED", { rejectionReason: "Rejected by operator" });
   await audit({ action: "clip.rejected", entityType: "ClipCandidate", entityId: id, role });
   return NextResponse.json({ ok: true });
 }

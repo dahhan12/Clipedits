@@ -11,6 +11,8 @@ import { scoreClip } from "./clipScoring";
 const DEFAULT_MIN = 15;
 const DEFAULT_MAX = 60;
 const ACCEPT_THRESHOLD = 0.45;
+/** Bump when generation/scoring logic changes so re-runs produce a new candidate set. */
+const SCORING_VERSION = 1;
 
 export interface ClipGenSummary {
   candidates: number;
@@ -52,9 +54,11 @@ export async function generateClipCandidates(assetId: string): Promise<ClipGenSu
   const ranges = buildCandidateRanges(duration, boundaries, { min: target.min, max: target.max });
   const transcript = safeTranscript(asset.transcript);
 
-  // Regenerate: drop prior candidates that were never rendered.
+  // Regenerate: drop prior candidates of THIS scoring version that were never
+  // rendered. Candidates with a rendered clip, or from other scoring versions,
+  // are preserved (and re-generation is idempotent via the unique key upsert).
   await prisma.clipCandidate.deleteMany({
-    where: { sourceAssetId: assetId, rendered: { none: {} } },
+    where: { sourceAssetId: assetId, scoringVersion: SCORING_VERSION, rendered: { none: {} } },
   });
 
   const summary: ClipGenSummary = { candidates: 0, rejected: 0 };
@@ -65,15 +69,27 @@ export async function generateClipCandidates(assetId: string): Promise<ClipGenSu
       len < target.min ? `below min ${target.min}s` : len > target.max ? `above max ${target.max}s` : null;
     const rejection = sourceViolation ?? durationViolation;
 
+    const key = {
+      sourceAssetId_startSec_endSec_scoringVersion: {
+        sourceAssetId: assetId,
+        startSec: range.startSec,
+        endSec: range.endSec,
+        scoringVersion: SCORING_VERSION,
+      },
+    };
+
     if (rejection) {
-      await prisma.clipCandidate.create({
-        data: {
+      await prisma.clipCandidate.upsert({
+        where: key,
+        create: {
           sourceAssetId: assetId,
           startSec: range.startSec,
           endSec: range.endSec,
+          scoringVersion: SCORING_VERSION,
           status: "REJECTED",
           rejectionReason: rejection,
         },
+        update: { status: "REJECTED", rejectionReason: rejection },
       });
       summary.rejected += 1;
       continue;
@@ -87,11 +103,18 @@ export async function generateClipCandidates(assetId: string): Promise<ClipGenSu
     });
 
     const belowBar = scores.overall < ACCEPT_THRESHOLD;
-    await prisma.clipCandidate.create({
-      data: {
+    await prisma.clipCandidate.upsert({
+      where: key,
+      create: {
         sourceAssetId: assetId,
         startSec: range.startSec,
         endSec: range.endSec,
+        scoringVersion: SCORING_VERSION,
+        status: belowBar ? "REJECTED" : "CANDIDATE",
+        rejectionReason: belowBar ? `overall score ${scores.overall} below ${ACCEPT_THRESHOLD}` : null,
+        scores,
+      },
+      update: {
         status: belowBar ? "REJECTED" : "CANDIDATE",
         rejectionReason: belowBar ? `overall score ${scores.overall} below ${ACCEPT_THRESHOLD}` : null,
         scores,

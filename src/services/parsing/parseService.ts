@@ -4,6 +4,7 @@ import { env } from "@/lib/config/env";
 import { logger } from "@/lib/logging/logger";
 import { assertSafeUrl, UrlValidationError } from "@/lib/security/url";
 import { deriveRuleStatus } from "@/lib/schemas/campaign";
+import { transition } from "@/lib/db/guardedTransition";
 import { parseCampaign } from "./campaignParser";
 import type { ResourceKind } from "@/generated/prisma";
 
@@ -21,12 +22,26 @@ export async function parseAndPersist(campaignId: string): Promise<void> {
     return;
   }
 
-  await prisma.campaign.update({ where: { id: campaignId }, data: { status: "PARSING" } });
+  await transition.campaign(campaignId, "PARSING");
 
+  try {
+    return await runParse(campaignId, campaign.externalId, campaign.sourceUrl, campaign.source);
+  } catch (err) {
+    await transition.campaign(campaignId, "ERROR").catch(() => undefined);
+    throw err;
+  }
+}
+
+async function runParse(
+  campaignId: string,
+  externalId: string,
+  sourceUrl: string,
+  source: string,
+): Promise<void> {
   // Manual text entries store the pasted text on the latest revision snapshot;
   // use it directly instead of fetching a page.
   const snapshotRevision =
-    campaign.source === "MANUAL"
+    source === "MANUAL"
       ? await prisma.campaignRevision.findFirst({
           where: { campaignId, rawSnapshot: { not: null } },
           orderBy: { capturedAt: "desc" },
@@ -34,8 +49,8 @@ export async function parseAndPersist(campaignId: string): Promise<void> {
       : null;
 
   const { rules } = await parseCampaign({
-    campaignId: campaign.externalId,
-    sourceUrl: campaign.sourceUrl,
+    campaignId: externalId,
+    sourceUrl,
     pageTextOverride: snapshotRevision?.rawSnapshot ?? undefined,
   });
 
@@ -67,10 +82,7 @@ export async function parseAndPersist(campaignId: string): Promise<void> {
     });
   }
 
-  await prisma.campaign.update({
-    where: { id: campaignId },
-    data: { status: ruleStatus === "PARSED" ? "PARSED" : "NEEDS_MANUAL_REVIEW" },
-  });
+  await transition.campaign(campaignId, ruleStatus === "PARSED" ? "PARSED" : "NEEDS_MANUAL_REVIEW");
 
   await audit({
     action: "campaign.parsed",

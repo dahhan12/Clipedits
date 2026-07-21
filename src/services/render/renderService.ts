@@ -7,6 +7,8 @@ import { audit } from "@/lib/db/audit";
 import { env } from "@/lib/config/env";
 import { logger } from "@/lib/logging/logger";
 import { objectStore, ensureLocalFile } from "@/adapters/storage/objectStore";
+import { sha256Hex } from "@/lib/security/crypto";
+import { transition } from "@/lib/db/guardedTransition";
 import { probeVideoMeta, extractThumbnail } from "@/lib/media/ffmpeg";
 import { FfmpegRenderer } from "@/lib/media/render/ffmpegRenderer";
 import { RemotionRenderer } from "@/lib/media/render/remotionRenderer";
@@ -44,6 +46,10 @@ export async function renderCandidate(candidateId: string): Promise<{ renderedCl
   if (!rules) {
     throw new Error("Cannot render: campaign has no parsed rules");
   }
+
+  // Mark the candidate as RENDERING (APPROVED/FAILED → RENDERING). Tolerant of
+  // an idempotent re-render where the candidate is already RENDERED.
+  await transition.clipCandidate(candidateId, "RENDERING").catch(() => undefined);
 
   const inputPath = await ensureLocalFile(storageKey);
   const workDir = await mkdtemp(path.join(tmpdir(), "cc-render-"));
@@ -133,24 +139,46 @@ export async function renderCandidate(candidateId: string): Promise<{ renderedCl
     createdAt: new Date().toISOString(),
   });
 
-  // Idempotent: replace a prior render that was never published.
-  await prisma.renderedClip.deleteMany({ where: { candidateId, publications: { none: {} } } });
-  const rendered = await prisma.renderedClip.create({
-    data: {
-      candidateId,
-      storageKey: renderKey,
-      thumbnailKey,
-      width,
-      height,
-      bytes: outputBytes,
-      durationSec: meta?.durationSec ?? candidate.endSec - candidate.startSec,
-      videoCodec: meta?.videoCodec ?? "h264",
-      audioCodec: meta?.audioCodec ?? "aac",
-      renderManifest: manifest,
-    },
+  // Idempotency key for this exact render configuration.
+  const renderConfigHash = sha256Hex(
+    JSON.stringify({
+      range: [candidate.startSec, candidate.endSec],
+      w,
+      h,
+      overlays,
+      logoText: logoText ?? null,
+      backend: backendUsed,
+      normalizeAudio,
+      trimSilence,
+    }),
+  );
+
+  // Replace any prior render of this config that was never published; then
+  // upsert on (candidateId, renderConfigHash) so a retry is idempotent.
+  await prisma.renderedClip.deleteMany({
+    where: { candidateId, renderConfigHash, publications: { none: {} } },
+  });
+  const commonData = {
+    storageKey: renderKey,
+    thumbnailKey,
+    width,
+    height,
+    bytes: outputBytes,
+    durationSec: meta?.durationSec ?? candidate.endSec - candidate.startSec,
+    videoCodec: meta?.videoCodec ?? "h264",
+    audioCodec: meta?.audioCodec ?? "aac",
+    renderManifest: manifest,
+  };
+  const rendered = await prisma.renderedClip.upsert({
+    where: { candidateId_renderConfigHash: { candidateId, renderConfigHash } },
+    create: { candidateId, renderConfigHash, ...commonData },
+    update: commonData,
   });
 
-  await prisma.clipCandidate.update({ where: { id: candidateId }, data: { status: "RENDERED" } });
+  // Guarded transition (APPROVED/RENDERING → RENDERED); ignore if already terminal.
+  await transition.clipCandidate(candidateId, "RENDERED").catch((err) => {
+    logger.warn({ err, candidateId }, "clip candidate already in terminal/again state");
+  });
   await audit({
     action: "clip.rendered",
     entityType: "RenderedClip",

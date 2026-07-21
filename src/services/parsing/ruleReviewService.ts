@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { audit } from "@/lib/db/audit";
 import { logger } from "@/lib/logging/logger";
 import { assertSafeUrl, UrlValidationError } from "@/lib/security/url";
+import { transition } from "@/lib/db/guardedTransition";
 import { CampaignRulesSchema, deriveRuleStatus, type CampaignRules } from "@/lib/schemas/campaign";
 import type { ResourceKind } from "@/generated/prisma";
 
@@ -43,10 +44,9 @@ export async function saveReviewedRules(campaignId: string, rawRules: unknown): 
     });
   }
 
-  await prisma.campaign.update({
-    where: { id: campaignId },
-    data: { status: status === "PARSED" ? "PARSED" : "NEEDS_MANUAL_REVIEW" },
-  });
+  await transition.campaign(campaignId, status === "PARSED" ? "PARSED" : "NEEDS_MANUAL_REVIEW").catch((err) =>
+    logger.warn({ err, campaignId }, "campaign status transition skipped during rule review"),
+  );
 
   await audit({
     action: "campaign.rules.reviewed",

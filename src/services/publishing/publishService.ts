@@ -10,6 +10,7 @@ import { InstagramReelsProvider } from "@/adapters/publishing/instagram";
 import { YouTubeShortsProvider } from "@/adapters/publishing/youtube";
 import type { PublishProvider } from "@/adapters/publishing/types";
 import { enqueueSubmission } from "@/lib/queue/queues";
+import { transition } from "@/lib/db/guardedTransition";
 import type { Platform, PublicationMode } from "@/generated/prisma";
 
 const PROVIDERS: Record<Platform, PublishProvider> = {
@@ -84,25 +85,40 @@ export async function publishClip(req: PublishRequest): Promise<{ publicationId:
     return { publicationId: existing.id, status: existing.status };
   }
 
-  const publication = await prisma.publication.upsert({
-    where: {
-      renderedClipId_platform_idempotencyKey: {
-        renderedClipId: req.renderedClipId,
-        platform: req.platform,
-        idempotencyKey,
+  // Create the PENDING publication inside a transaction that re-checks, at the
+  // last moment, that no compliance check FAILs — closing the gap between the
+  // initial gate read and the write. The unique (clip, platform, idempotencyKey)
+  // guarantees two concurrent workers cannot both create a publication.
+  const publication = await prisma.$transaction(async (tx) => {
+    const failCount = await tx.complianceResult.count({
+      where: { renderedClipId: req.renderedClipId, outcome: "FAIL" },
+    });
+    if (failCount > 0) throw new ComplianceFailedError();
+    return tx.publication.upsert({
+      where: {
+        renderedClipId_platform_idempotencyKey: {
+          renderedClipId: req.renderedClipId,
+          platform: req.platform,
+          idempotencyKey,
+        },
       },
-    },
-    create: {
-      renderedClipId: req.renderedClipId,
-      accountId: account?.id,
-      platform: req.platform,
-      mode,
-      status: "PENDING",
-      idempotencyKey,
-      captionText: caption,
-    },
-    update: { mode, status: "PENDING", captionText: caption, failureReason: null },
+      create: {
+        renderedClipId: req.renderedClipId,
+        accountId: account?.id,
+        platform: req.platform,
+        mode,
+        status: "PENDING",
+        idempotencyKey,
+        captionText: caption,
+      },
+      update: { mode, status: "PENDING", captionText: caption, failureReason: null },
+    });
+  }).catch((err) => {
+    if (err instanceof ComplianceFailedError) return null;
+    throw err;
   });
+
+  if (!publication) return skip(req, "Blocked: a compliance check FAILed");
 
   try {
     const localPath = await ensureLocalFile(rendered.storageKey);
@@ -122,32 +138,33 @@ export async function publishClip(req: PublishRequest): Promise<{ publicationId:
             accountHandle: account?.externalId ?? account?.handle ?? "",
           });
 
-    const updated = await prisma.publication.update({
-      where: { id: publication.id },
-      data: {
-        status: result.status,
-        externalPostId: result.externalPostId,
-        postUrl: result.postUrl,
-      },
+    // Guarded, version-checked transition PENDING → result.status.
+    await transition.publication(publication.id, result.status, {
+      externalPostId: result.externalPostId,
+      postUrl: result.postUrl,
     });
 
     await audit({
       action: "clip.published",
       entityType: "Publication",
-      entityId: updated.id,
+      entityId: publication.id,
       metadata: { platform: req.platform, mode, status: result.status, downgradeReasons, note: result.note },
     });
 
-    await enqueueSubmission(updated.id);
-    logger.info({ publicationId: updated.id, status: result.status, mode }, "Publish complete");
-    return { publicationId: updated.id, status: result.status };
+    await enqueueSubmission(publication.id);
+    logger.info({ publicationId: publication.id, status: result.status, mode }, "Publish complete");
+    return { publicationId: publication.id, status: result.status };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await prisma.publication.update({ where: { id: publication.id }, data: { status: "FAILED", failureReason: msg } });
+    await transition
+      .publication(publication.id, "FAILED", { failureReason: msg })
+      .catch((e) => logger.warn({ e, publicationId: publication.id }, "could not mark publication FAILED"));
     logger.error({ err, publicationId: publication.id }, "Publish failed");
     throw err;
   }
 }
+
+class ComplianceFailedError extends Error {}
 
 function complianceGate(results: Array<{ outcome: string }>): { hasFail: boolean; hasReview: boolean } {
   return {

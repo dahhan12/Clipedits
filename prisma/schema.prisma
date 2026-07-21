@@ -169,6 +169,8 @@ model Campaign {
   title        String?
   sourceUrl    String
   status       CampaignStatus @default(DISCOVERED)
+  // Optimistic-concurrency version; bumped on every guarded state transition.
+  version      Int            @default(0)
   // Latest observed page hash (drift detection lives on CampaignRevision).
   lastPageHash String?
   discoveredAt DateTime       @default(now())
@@ -270,7 +272,11 @@ model ClipCandidate {
   sourceAssetId String
   startSec     Float
   endSec       Float
+  // Version of the scoring/generation logic; part of the idempotency key so a
+  // re-run with the same logic + range does not create a duplicate candidate.
+  scoringVersion Int      @default(1)
   status       ClipStatus @default(CANDIDATE)
+  version      Int        @default(0)
   rejectionReason String?
   // Claude scores: hook, clarity, emotional intensity, relevance, standalone.
   scores       Json?
@@ -278,6 +284,7 @@ model ClipCandidate {
 
   rendered RenderedClip[]
 
+  @@unique([sourceAssetId, startSec, endSec, scoringVersion])
   @@index([sourceAssetId, status])
 }
 
@@ -285,6 +292,9 @@ model RenderedClip {
   id            String     @id @default(cuid())
   candidate     ClipCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   candidateId   String
+  // Hash of the render configuration (range + frame size + overlays + backend +
+  // audio options). Unique per candidate so an identical re-render is idempotent.
+  renderConfigHash String  @default("")
   storageKey    String?
   thumbnailKey  String?
   width         Int?
@@ -293,6 +303,9 @@ model RenderedClip {
   bytes         Int?
   videoCodec    String?    @default("h264")
   audioCodec    String?    @default("aac")
+  perceptualHash String?
+  audioHash     String?
+  version       Int        @default(0)
   // Full description of every transformation applied.
   renderManifest Json?
   createdAt     DateTime   @default(now())
@@ -300,6 +313,7 @@ model RenderedClip {
   compliance   ComplianceResult[]
   publications Publication[]
 
+  @@unique([candidateId, renderConfigHash])
   @@index([candidateId])
 }
 
@@ -352,6 +366,7 @@ model Publication {
   platform       Platform
   mode           PublicationMode
   status         PublicationStatus @default(PENDING)
+  version        Int               @default(0)
   // Deterministic key to make publish jobs idempotent.
   idempotencyKey String
   postUrl        String?
@@ -376,6 +391,7 @@ model CampaignSubmission {
   publication   Publication      @relation(fields: [publicationId], references: [id], onDelete: Cascade)
   publicationId String           @unique
   status        SubmissionStatus @default(PREPARED)
+  version       Int              @default(0)
   submittedAt   DateTime?
   approvalState String?
   rejectionReason String?
@@ -402,8 +418,13 @@ model PostMetric {
   comments      Int?
   shares        Int?
   qualifiedViews Int?
+  // Provider-reported capture time (day granularity when the API gives no
+  // timestamp). Unique per publication so a re-poll for the same window is
+  // idempotent rather than inserting a duplicate snapshot.
+  providerCapturedAt DateTime @default(now())
   capturedAt    DateTime    @default(now())
 
+  @@unique([publicationId, providerCapturedAt])
   @@index([publicationId, capturedAt])
 }
 

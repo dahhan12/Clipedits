@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { audit } from "@/lib/db/audit";
 import { env } from "@/lib/config/env";
 import { logger } from "@/lib/logging/logger";
+import { transition } from "@/lib/db/guardedTransition";
 import { verifyPublicAccessible } from "./verifyPublic";
 import { ContentRewardsSubmissionAdapter } from "@/adapters/submission/contentRewards";
 import type { SubmissionAdapter } from "@/adapters/submission/types";
@@ -93,10 +94,9 @@ export async function executeSubmission(
       platform: submission.publication.platform,
     });
     const status = outcome.submitted ? "SUBMITTED" : "PREPARED";
-    await prisma.campaignSubmission.update({
-      where: { id: submissionId },
-      data: { status, submittedAt: outcome.submitted ? new Date() : null },
-    });
+    if (outcome.submitted) {
+      await transition.submission(submissionId, "SUBMITTED", { submittedAt: new Date() });
+    }
     await audit({
       action: "submission.executed",
       entityType: "CampaignSubmission",
@@ -107,7 +107,9 @@ export async function executeSubmission(
     return { status };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await prisma.campaignSubmission.update({ where: { id: submissionId }, data: { status: "FAILED", rejectionReason: msg } });
+    await transition
+      .submission(submissionId, "FAILED", { rejectionReason: msg })
+      .catch(() => undefined);
     logger.error({ err, submissionId }, "Submission execution failed");
     throw err;
   }

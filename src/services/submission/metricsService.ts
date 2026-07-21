@@ -36,15 +36,21 @@ export async function syncMetrics(publicationId: string): Promise<void> {
   // "Qualified views" default to raw views until a campaign-specific rule refines it.
   const qualifiedViews = metrics?.views ?? null;
 
-  await prisma.postMetric.create({
-    data: {
-      publicationId,
-      views: metrics?.views ?? null,
-      likes: metrics?.likes ?? null,
-      comments: metrics?.comments ?? null,
-      shares: metrics?.shares ?? null,
-      qualifiedViews,
-    },
+  // Idempotent per UTC day: re-polling the same day updates the snapshot rather
+  // than inserting duplicates. Real word: use the provider's reported timestamp.
+  const now = new Date();
+  const providerCapturedAt = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const metricData = {
+    views: metrics?.views ?? null,
+    likes: metrics?.likes ?? null,
+    comments: metrics?.comments ?? null,
+    shares: metrics?.shares ?? null,
+    qualifiedViews,
+  };
+  await prisma.postMetric.upsert({
+    where: { publicationId_providerCapturedAt: { publicationId, providerCapturedAt } },
+    create: { publicationId, providerCapturedAt, ...metricData },
+    update: metricData,
   });
 
   await audit({
