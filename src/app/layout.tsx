@@ -1,6 +1,9 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { headers } from "next/headers";
+import { sessionFromCookieHeader } from "@/lib/security/session";
+import { SessionBar } from "@/components/SessionBar";
 
 export const metadata: Metadata = {
   title: "CampaignClipper",
@@ -21,20 +24,22 @@ const NAV: Array<{ href: string; label: string }> = [
   { href: "/jobs", label: "Errors & jobs" },
 ];
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const session = sessionFromCookieHeader((await headers()).get("cookie"));
   return (
     <html lang="en">
       <body>
         <div className="layout">
-          <aside className="sidebar">
+          <aside className="sidebar" style={{ display: "flex", flexDirection: "column" }}>
             <h1>🎬 CampaignClipper</h1>
-            <nav>
+            <nav style={{ flex: 1 }}>
               {NAV.map((n) => (
                 <a key={n.href} href={n.href}>
                   {n.label}
                 </a>
               ))}
             </nav>
+            <SessionBar role={session?.role ?? null} />
           </aside>
           <main className="main">{children}</main>
         </div>

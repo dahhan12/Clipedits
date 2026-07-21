@@ -1,4 +1,5 @@
 import type { Role } from "@/generated/prisma";
+import { sessionFromCookieHeader } from "@/lib/security/session";
 
 /**
  * Minimal role-based access control. In Phase 1 the current role is read from a
@@ -40,8 +41,13 @@ export function can(role: Role, action: Action): boolean {
   return allowed === "*" || allowed.includes(action);
 }
 
-/** Read the caller's role from a trusted proxy header. Defaults to VIEWER. */
+/**
+ * Resolve the caller's role. Prefers a valid signed session cookie; falls back
+ * to the `x-clipper-role` header (dev/proxy) and finally VIEWER.
+ */
 export function currentRole(headers: Headers): Role {
+  const session = sessionFromCookieHeader(headers.get("cookie"));
+  if (session) return session.role;
   const raw = (headers.get("x-clipper-role") ?? "VIEWER").toUpperCase();
   if (raw === "ADMIN" || raw === "OPERATOR" || raw === "VIEWER") return raw;
   return "VIEWER";

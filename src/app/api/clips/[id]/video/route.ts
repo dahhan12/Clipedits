@@ -15,7 +15,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!clip?.storageKey) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   try {
-    const node = await objectStore().getStream(clip.storageKey);
+    const store = objectStore();
+    // Prefer a short-lived signed URL when the backend supports it (R2).
+    const signed = await store.signedDownloadUrl(clip.storageKey).catch(() => null);
+    if (signed) return NextResponse.redirect(signed, 302);
+
+    const node = await store.getStream(clip.storageKey);
     const web = Readable.toWeb(node) as ReadableStream<Uint8Array>;
     return new NextResponse(web, {
       headers: { "Content-Type": "video/mp4", "Cache-Control": "private, max-age=60" },

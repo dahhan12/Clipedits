@@ -131,6 +131,34 @@ enum Role {
 }
 
 // ---------------------------------------------------------------------------
+// Tenancy & auth
+// ---------------------------------------------------------------------------
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  users User[]
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  name         String?
+  role         Role       @default(VIEWER)
+  // scrypt hash (salt embedded); never stored or logged in plaintext.
+  passwordHash String?
+  workspace    Workspace? @relation(fields: [workspaceId], references: [id])
+  workspaceId  String?
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([workspaceId])
+}
+
+// ---------------------------------------------------------------------------
 // Campaign core
 // ---------------------------------------------------------------------------
 

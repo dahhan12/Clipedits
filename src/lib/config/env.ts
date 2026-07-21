@@ -10,6 +10,10 @@ const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_URL: z.string().url().default("http://localhost:3000"),
   ENCRYPTION_KEY: z.string().optional(),
+  // HMAC secret for signing session cookies. Falls back to ENCRYPTION_KEY.
+  SESSION_SECRET: z.string().optional(),
+  // Per-IP request budget per minute for mutating API routes.
+  RATE_LIMIT_PER_MINUTE: z.string().default("120").transform((v) => Number.parseInt(v, 10)),
 
   DATABASE_URL: z.string().optional(),
   REDIS_URL: z.string().default("redis://localhost:6379"),
