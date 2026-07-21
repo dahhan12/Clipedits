@@ -1,6 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { logger } from "@/lib/logging/logger";
-import type { PublishProvider, PublishInput, PublishResult } from "./types";
+import type { PublishProvider, PublishInput, PublishResult, PostMetrics } from "./types";
 
 /**
  * TikTok Content Posting API provider.
@@ -67,5 +67,14 @@ export class TikTokProvider implements PublishProvider {
       externalPostId: publishId,
       note: direct ? "Direct-posted (privacy SELF_ONLY until reviewed)." : "Uploaded to TikTok inbox as draft.",
     };
+  }
+
+  // Analytics require the TikTok Display/Research API scope. Returns null until
+  // that access is connected — the tracker records "unknown", never fabricated.
+  async getMetrics(_externalPostId: string, _accessToken?: string): Promise<PostMetrics | null> {
+    return null;
+  }
+  async getStatus(_externalPostId: string, _accessToken?: string): Promise<string | null> {
+    return null;
   }
 }

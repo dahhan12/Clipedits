@@ -21,6 +21,13 @@ export interface PublishResult {
   note?: string;
 }
 
+export interface PostMetrics {
+  views: number | null;
+  likes: number | null;
+  comments: number | null;
+  shares: number | null;
+}
+
 /**
  * A publishing provider. Real official APIs are used when credentials are
  * present; without them the provider prepares a local DRAFT (never fakes a live
@@ -29,4 +36,12 @@ export interface PublishResult {
 export interface PublishProvider {
   readonly platform: Platform;
   publish(input: PublishInput): Promise<PublishResult>;
+  /**
+   * Fetch post metrics from the platform's analytics API. Returns null when no
+   * analytics access is available (sandbox / missing token) — callers must
+   * record "unknown" rather than fabricating numbers.
+   */
+  getMetrics(externalPostId: string, accessToken?: string): Promise<PostMetrics | null>;
+  /** Fetch the post's status (e.g. published/processing) or null if unknown. */
+  getStatus(externalPostId: string, accessToken?: string): Promise<string | null>;
 }

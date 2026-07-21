@@ -117,6 +117,13 @@ enum JobStatus {
   SKIPPED
 }
 
+enum PayoutStatus {
+  NONE
+  PENDING
+  PROCESSING
+  PAID
+}
+
 enum Role {
   ADMIN
   OPERATOR
@@ -328,6 +335,7 @@ model Publication {
   updatedAt      DateTime          @updatedAt
 
   submission CampaignSubmission?
+  metrics    PostMetric[]
 
   @@unique([renderedClipId, platform, idempotencyKey])
   @@index([status])
@@ -345,11 +353,44 @@ model CampaignSubmission {
   rejectionReason String?
   qualifiedViews Int?
   estimatedEarnings Float?
+  confirmedEarnings Float?
+  payoutStatus  PayoutStatus     @default(NONE)
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 
+  earnings EarningsRecord[]
+
   @@unique([campaignId, publicationId])
   @@index([status])
+}
+
+// A point-in-time snapshot of a published post's platform metrics.
+model PostMetric {
+  id            String      @id @default(cuid())
+  publication   Publication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+  publicationId String
+  views         Int?
+  likes         Int?
+  comments      Int?
+  shares        Int?
+  qualifiedViews Int?
+  capturedAt    DateTime    @default(now())
+
+  @@index([publicationId, capturedAt])
+}
+
+// A point-in-time snapshot of a submission's earnings/payout state.
+model EarningsRecord {
+  id            String       @id @default(cuid())
+  submission    CampaignSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  submissionId  String
+  qualifiedViews Int?
+  estimatedEarnings Float?
+  confirmedEarnings Float?
+  payoutStatus  PayoutStatus @default(NONE)
+  recordedAt    DateTime     @default(now())
+
+  @@index([submissionId, recordedAt])
 }
 
 // ---------------------------------------------------------------------------

@@ -41,6 +41,7 @@ export default async function SubmissionsPage() {
                 <th>Post</th>
                 <th>Qual. views</th>
                 <th>Est. earnings</th>
+                <th>Payout</th>
                 <th />
               </tr>
             </thead>
@@ -63,6 +64,9 @@ export default async function SubmissionsPage() {
                   </td>
                   <td>{s.qualifiedViews ?? "—"}</td>
                   <td>{s.estimatedEarnings != null ? `$${s.estimatedEarnings.toFixed(2)}` : "—"}</td>
+                  <td>
+                    <span className={`badge ${s.payoutStatus === "PAID" ? "ok" : "warn"}`}>{s.payoutStatus}</span>
+                  </td>
                   <td>{s.status === "AWAITING_CONFIRMATION" && <ConfirmSubmissionButton submissionId={s.id} />}</td>
                 </tr>
               ))}

@@ -1,6 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { logger } from "@/lib/logging/logger";
-import type { PublishProvider, PublishInput, PublishResult } from "./types";
+import type { PublishProvider, PublishInput, PublishResult, PostMetrics } from "./types";
 
 /**
  * YouTube Shorts provider (YouTube Data API v3, resumable upload).
@@ -60,5 +60,34 @@ export class YouTubeShortsProvider implements PublishProvider {
       postUrl: video.id ? `https://www.youtube.com/shorts/${video.id}` : undefined,
       note: `Uploaded with privacy=${privacyStatus}.`,
     };
+  }
+
+  /** YouTube Analytics via the Data API (statistics part). Null when no token. */
+  async getMetrics(externalPostId: string, accessToken?: string): Promise<PostMetrics | null> {
+    if (!accessToken) return null;
+    try {
+      const resp = await fetch(
+        `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${encodeURIComponent(externalPostId)}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      if (!resp.ok) return null;
+      const body = (await resp.json()) as {
+        items?: Array<{ statistics?: { viewCount?: string; likeCount?: string; commentCount?: string } }>;
+      };
+      const s = body.items?.[0]?.statistics;
+      if (!s) return null;
+      return {
+        views: s.viewCount != null ? Number(s.viewCount) : null,
+        likes: s.likeCount != null ? Number(s.likeCount) : null,
+        comments: s.commentCount != null ? Number(s.commentCount) : null,
+        shares: null,
+      };
+    } catch (err) {
+      logger.warn({ err }, "YouTube metrics fetch failed");
+      return null;
+    }
+  }
+  async getStatus(_externalPostId: string, _accessToken?: string): Promise<string | null> {
+    return null;
   }
 }

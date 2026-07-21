@@ -4,6 +4,8 @@ import { QUEUE_NAMES } from "@/lib/queue/queues";
 import { withJobRun } from "./jobRun";
 import { prepareSubmission } from "@/services/submission/submissionService";
 import { trackSubmission } from "@/services/submission/trackingService";
+import { syncMetrics } from "@/services/submission/metricsService";
+import { syncEarnings } from "@/services/submission/earningsService";
 import { logger } from "@/lib/logging/logger";
 
 /**
@@ -33,9 +35,23 @@ const trackWorker = new Worker(
   { connection: redisConnection, concurrency: 3 },
 );
 
+const metricsWorker = new Worker(
+  QUEUE_NAMES.metricsSync,
+  async (job) => syncMetrics(job.data.publicationId as string),
+  { connection: redisConnection, concurrency: 3 },
+);
+
+const earningsWorker = new Worker(
+  QUEUE_NAMES.earningsSync,
+  async (job) => syncEarnings(job.data.submissionId as string),
+  { connection: redisConnection, concurrency: 3 },
+);
+
 for (const [name, w] of [
   ["submit", submitWorker],
   ["track", trackWorker],
+  ["metrics-sync", metricsWorker],
+  ["earnings-sync", earningsWorker],
 ] as const) {
   w.on("completed", (job) => logger.info({ worker: name, jobId: job.id }, "job completed"));
   w.on("failed", (job, err) => logger.error({ worker: name, jobId: job?.id, err }, "job failed"));

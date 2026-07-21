@@ -7,16 +7,21 @@ export default async function EarningsPage() {
     .findMany({ include: { campaign: true } })
     .catch(() => []);
 
-  const byCampaign = new Map<string, { title: string; earnings: number; views: number; count: number }>();
+  const byCampaign = new Map<
+    string,
+    { title: string; earnings: number; confirmed: number; views: number; count: number }
+  >();
   for (const s of submissions) {
     const key = s.campaignId;
     const cur = byCampaign.get(key) ?? {
       title: s.campaign.title ?? s.campaign.externalId,
       earnings: 0,
+      confirmed: 0,
       views: 0,
       count: 0,
     };
     cur.earnings += s.estimatedEarnings ?? 0;
+    cur.confirmed += s.confirmedEarnings ?? 0;
     cur.views += s.qualifiedViews ?? 0;
     cur.count += 1;
     byCampaign.set(key, cur);
@@ -24,6 +29,7 @@ export default async function EarningsPage() {
 
   const rows = [...byCampaign.entries()].sort((a, b) => b[1].earnings - a[1].earnings);
   const total = rows.reduce((acc, [, v]) => acc + v.earnings, 0);
+  const totalConfirmed = rows.reduce((acc, [, v]) => acc + v.confirmed, 0);
 
   return (
     <div>
@@ -32,6 +38,10 @@ export default async function EarningsPage() {
         <div className="stat">
           <div className="n">${total.toFixed(2)}</div>
           <div className="l">Total estimated earnings</div>
+        </div>
+        <div className="stat">
+          <div className="n">${totalConfirmed.toFixed(2)}</div>
+          <div className="l">Total confirmed earnings</div>
         </div>
         <div className="stat">
           <div className="n">{rows.length}</div>
@@ -48,7 +58,8 @@ export default async function EarningsPage() {
                 <th>Campaign</th>
                 <th>Submissions</th>
                 <th>Qualified views</th>
-                <th>Estimated earnings</th>
+                <th>Estimated</th>
+                <th>Confirmed</th>
               </tr>
             </thead>
             <tbody>
@@ -60,6 +71,7 @@ export default async function EarningsPage() {
                   <td>{v.count}</td>
                   <td>{v.views || "—"}</td>
                   <td>${v.earnings.toFixed(2)}</td>
+                  <td>{v.confirmed ? `$${v.confirmed.toFixed(2)}` : "—"}</td>
                 </tr>
               ))}
             </tbody>

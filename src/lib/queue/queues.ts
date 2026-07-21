@@ -17,6 +17,8 @@ export const QUEUE_NAMES = {
   publish: "publish",
   submit: "submit",
   track: "track",
+  metricsSync: "metrics-sync",
+  earningsSync: "earnings-sync",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -42,6 +44,8 @@ export const complianceQueue = makeQueue(QUEUE_NAMES.compliance);
 export const publishQueue = makeQueue(QUEUE_NAMES.publish);
 export const submitQueue = makeQueue(QUEUE_NAMES.submit);
 export const trackQueue = makeQueue(QUEUE_NAMES.track);
+export const metricsSyncQueue = makeQueue(QUEUE_NAMES.metricsSync);
+export const earningsSyncQueue = makeQueue(QUEUE_NAMES.earningsSync);
 
 /**
  * BullMQ forbids ":" in custom job ids. Our DB `jobKey`s use ":"; convert to a
@@ -99,4 +103,14 @@ export async function enqueueSubmission(publicationId: string): Promise<void> {
 /** Enqueue performance tracking for a submission, idempotent on its id. */
 export async function enqueueTracking(submissionId: string): Promise<void> {
   await trackQueue.add("track-submission", { submissionId }, { jobId: toJobId(`track:${submissionId}`) });
+}
+
+/** Enqueue a metrics sync for a publication (metrics change → re-runnable). */
+export async function enqueueMetricsSync(publicationId: string): Promise<void> {
+  await metricsSyncQueue.add("metrics-sync", { publicationId });
+}
+
+/** Enqueue an earnings sync for a submission (earnings change → re-runnable). */
+export async function enqueueEarningsSync(submissionId: string): Promise<void> {
+  await earningsSyncQueue.add("earnings-sync", { submissionId });
 }

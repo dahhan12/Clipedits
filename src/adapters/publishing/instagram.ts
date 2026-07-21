@@ -1,5 +1,5 @@
 import { logger } from "@/lib/logging/logger";
-import type { PublishProvider, PublishInput, PublishResult } from "./types";
+import type { PublishProvider, PublishInput, PublishResult, PostMetrics } from "./types";
 
 /**
  * Instagram Reels provider (Facebook Graph API).
@@ -61,5 +61,13 @@ export class InstagramReelsProvider implements PublishProvider {
       externalPostId: published.id,
       postUrl: published.id ? `https://www.instagram.com/reel/${published.id}/` : undefined,
     };
+  }
+
+  // IG insights require the instagram_manage_insights scope; null until connected.
+  async getMetrics(_externalPostId: string, _accessToken?: string): Promise<PostMetrics | null> {
+    return null;
+  }
+  async getStatus(_externalPostId: string, _accessToken?: string): Promise<string | null> {
+    return null;
   }
 }
