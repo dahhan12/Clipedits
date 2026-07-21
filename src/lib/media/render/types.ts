@@ -10,6 +10,10 @@ export interface RenderPlan {
   /** Overlay text lines (already gated by campaign permission/requirement). */
   overlays: string[];
   logoText?: string;
+  /** EBU R128 audio loudness normalization. Default true. */
+  normalizeAudio?: boolean;
+  /** Trim leading/trailing silence (may shorten duration). Default false. */
+  trimSilence?: boolean;
 }
 
 /** A backend that turns a RenderPlan into an MP4 at `outputPath`. */

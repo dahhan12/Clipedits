@@ -32,6 +32,8 @@ export class RemotionRenderer implements OverlayRenderer {
         endSec: plan.endSec,
         width: plan.width,
         height: plan.height,
+        normalizeAudio: plan.normalizeAudio,
+        trimSilence: plan.trimSilence,
       });
 
       // 2. Composite overlays via Remotion (dynamic import).

@@ -7,7 +7,7 @@ import { audit } from "@/lib/db/audit";
 import { env } from "@/lib/config/env";
 import { logger } from "@/lib/logging/logger";
 import { objectStore, ensureLocalFile } from "@/adapters/storage/objectStore";
-import { probeVideoMeta } from "@/lib/media/ffmpeg";
+import { probeVideoMeta, extractThumbnail } from "@/lib/media/ffmpeg";
 import { FfmpegRenderer } from "@/lib/media/render/ffmpegRenderer";
 import { RemotionRenderer } from "@/lib/media/render/remotionRenderer";
 import type { OverlayRenderer } from "@/lib/media/render/types";
@@ -53,40 +53,37 @@ export async function renderCandidate(candidateId: string): Promise<{ renderedCl
   const [w, h] = [env.RENDER_WIDTH, env.RENDER_HEIGHT];
 
   const renderer = pickRenderer();
+  const normalizeAudio = true;
+  const trimSilence = env.RENDER_TRIM_SILENCE;
   const transformations = [
     { step: "trim", detail: `${candidate.startSec.toFixed(2)}-${candidate.endSec.toFixed(2)}s` },
     { step: "scale+crop", detail: `${w}x${h} (9:16 cover)` },
-    { step: "encode", detail: "libx264 + aac, +faststart" },
+    { step: "audio", detail: `loudnorm${trimSilence ? " + silence-trim" : ""}` },
+    { step: "encode", detail: "libx264 crf23 + aac, +faststart" },
   ];
+  const basePlan = {
+    inputPath,
+    outputPath,
+    startSec: candidate.startSec,
+    endSec: candidate.endSec,
+    width: w,
+    height: h,
+    overlays,
+    logoText,
+    normalizeAudio,
+    trimSilence,
+  };
 
   let backendUsed = renderer.backend;
   try {
-    await renderer.render({
-      inputPath,
-      outputPath,
-      startSec: candidate.startSec,
-      endSec: candidate.endSec,
-      width: w,
-      height: h,
-      overlays,
-      logoText,
-    });
+    await renderer.render(basePlan);
     if (overlays.length || logoText) {
       transformations.push({ step: "overlays", detail: `${overlays.length + (logoText ? 1 : 0)} applied via ${renderer.backend}` });
     }
   } catch (err) {
     if (renderer.backend === "remotion") {
       logger.warn({ err, candidateId }, "Remotion render failed; falling back to FFmpeg");
-      await new FfmpegRenderer().render({
-        inputPath,
-        outputPath,
-        startSec: candidate.startSec,
-        endSec: candidate.endSec,
-        width: w,
-        height: h,
-        overlays,
-        logoText,
-      });
+      await new FfmpegRenderer().render(basePlan);
       backendUsed = "ffmpeg";
       transformations.push({ step: "overlays", detail: "fallback to FFmpeg burn-in" });
     } else {
@@ -102,6 +99,19 @@ export async function renderCandidate(candidateId: string): Promise<{ renderedCl
 
   const renderKey = `campaigns/${asset.campaignId}/renders/${candidateId}.mp4`;
   await objectStore().putStream(renderKey, createReadStream(outputPath), "video/mp4");
+
+  // Thumbnail from the rendered output (mid-clip frame).
+  let thumbnailKey: string | null = null;
+  try {
+    const thumbPath = path.join(workDir, `${candidateId}.jpg`);
+    const dur = meta?.durationSec ?? candidate.endSec - candidate.startSec;
+    await extractThumbnail(outputPath, Math.min(1, dur / 2), thumbPath);
+    thumbnailKey = `campaigns/${asset.campaignId}/renders/${candidateId}.jpg`;
+    await objectStore().putStream(thumbnailKey, createReadStream(thumbPath), "image/jpeg");
+    transformations.push({ step: "thumbnail", detail: "mid-clip frame" });
+  } catch (err) {
+    logger.warn({ err, candidateId }, "Thumbnail extraction failed");
+  }
 
   const captions = await buildCaptions(rules, excerpt(asset.transcript, candidate.startSec, candidate.endSec));
 
@@ -129,6 +139,7 @@ export async function renderCandidate(candidateId: string): Promise<{ renderedCl
     data: {
       candidateId,
       storageKey: renderKey,
+      thumbnailKey,
       width,
       height,
       bytes: outputBytes,

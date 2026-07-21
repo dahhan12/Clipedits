@@ -97,29 +97,42 @@ export interface RenderClipOptions {
   height: number;
   /** Overlay text lines to burn in (already gated by permission/requirement). */
   burnInText?: string[];
+  /** EBU R128 loudness normalization of the audio track. Default true. */
+  normalizeAudio?: boolean;
+  /** Trim leading/trailing silence (may shorten duration). Default false. */
+  trimSilence?: boolean;
+  /** x264 CRF quality/compression (lower = higher quality). Default 23. */
+  crf?: number;
 }
 
 /**
  * Render a 9:16 (or arbitrary WxH) clip from a source video with FFmpeg:
- * trims [start,end], scales to cover and center-crops to the target frame, and
- * encodes H.264 video + AAC audio into an MP4. Optional text is burned in with
- * the drawtext filter (used as the FFmpeg overlay path / Remotion fallback).
+ * trims [start,end], scales to cover and center-crops to the target frame,
+ * loudness-normalizes and (optionally) silence-trims the audio, and encodes
+ * H.264 video + AAC audio into a compressed MP4. Optional text is burned in
+ * with the drawtext filter (used as the FFmpeg overlay path / Remotion fallback).
  */
 export async function renderClip9x16(opts: RenderClipOptions): Promise<void> {
   const { width: w, height: h } = opts;
-  const filters = [
+  const vfilters = [
     `scale=${w}:${h}:force_original_aspect_ratio=increase`,
     `crop=${w}:${h}`,
   ];
   opts.burnInText?.forEach((line, i) => {
     const safe = line.replace(/[\\:']/g, (c) => `\\${c}`).replace(/,/g, "\\,");
     const y = `h-${(opts.burnInText!.length - i) * 90}`;
-    filters.push(
+    vfilters.push(
       `drawtext=text='${safe}':fontcolor=white:fontsize=42:borderw=3:bordercolor=black@0.8:x=(w-text_w)/2:y=${y}`,
     );
   });
 
-  await run("ffmpeg", [
+  const afilters: string[] = [];
+  if (opts.trimSilence) {
+    afilters.push("silenceremove=start_periods=1:start_threshold=-45dB:stop_periods=1:stop_threshold=-45dB");
+  }
+  if (opts.normalizeAudio !== false) afilters.push("loudnorm=I=-16:TP=-1.5:LRA=11");
+
+  const args = [
     "-y",
     "-ss",
     opts.startSec.toFixed(3),
@@ -128,11 +141,14 @@ export async function renderClip9x16(opts: RenderClipOptions): Promise<void> {
     "-i",
     opts.inputPath,
     "-vf",
-    filters.join(","),
+    vfilters.join(","),
+    ...(afilters.length ? ["-af", afilters.join(",")] : []),
     "-c:v",
     "libx264",
     "-preset",
     "veryfast",
+    "-crf",
+    String(opts.crf ?? 23),
     "-profile:v",
     "high",
     "-pix_fmt",
@@ -144,6 +160,23 @@ export async function renderClip9x16(opts: RenderClipOptions): Promise<void> {
     "-movflags",
     "+faststart",
     opts.outputPath,
+  ];
+  await run("ffmpeg", args);
+}
+
+/** Extract a single JPEG thumbnail frame at `atSec` from a video. */
+export async function extractThumbnail(videoPath: string, atSec: number, outPath: string): Promise<void> {
+  await run("ffmpeg", [
+    "-y",
+    "-ss",
+    Math.max(0, atSec).toFixed(3),
+    "-i",
+    videoPath,
+    "-frames:v",
+    "1",
+    "-q:v",
+    "3",
+    outPath,
   ]);
 }
 

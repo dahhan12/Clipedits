@@ -36,6 +36,7 @@ export default async function ClipPreviewPage({ params }: { params: Promise<{ id
           {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
           <video
             src={`/api/clips/${clip.id}/video`}
+            poster={clip.thumbnailKey ? `/api/clips/${clip.id}/thumbnail` : undefined}
             controls
             style={{ width: "100%", borderRadius: 8, background: "#000", aspectRatio: "9 / 16" }}
           />

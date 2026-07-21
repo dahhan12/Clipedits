@@ -19,6 +19,8 @@ export class FfmpegRenderer implements OverlayRenderer {
       width: plan.width,
       height: plan.height,
       burnInText,
+      normalizeAudio: plan.normalizeAudio,
+      trimSilence: plan.trimSilence,
     });
   }
 }
