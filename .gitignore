@@ -11,8 +11,8 @@ coverage/
 prisma/*.db
 src/generated/
 .DS_Store
-tmp/
-storage/
+/tmp/
+/storage/
 playwright-state/
 *.tsbuildinfo
 dump.rdb
