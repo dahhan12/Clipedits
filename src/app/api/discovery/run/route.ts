@@ -12,7 +12,7 @@ export async function POST() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   try {
-    await discoveryQueue.add("run", {}, { jobId: `discovery:${Date.now()}` });
+    await discoveryQueue.add("run", {}, { jobId: `discovery__${Date.now()}` });
     await audit({ action: "discovery.enqueued", entityType: "Queue", role });
     return NextResponse.json({ ok: true });
   } catch (err) {

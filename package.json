@@ -14,6 +14,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
+    "seed:demo": "tsx scripts/seed-demo.ts",
     "worker:discovery": "tsx src/workers/discovery.worker.ts",
     "worker:pipeline": "tsx src/workers/pipeline.worker.ts",
     "worker:render": "tsx src/workers/render.worker.ts",

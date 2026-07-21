@@ -48,7 +48,7 @@ async function dispatch(queue: string, jobKey: string): Promise<void> {
   const id = rest.join(":");
   switch (queue) {
     case "discovery":
-      await discoveryQueue.add("run", {}, { jobId: `discovery:${Date.now()}` });
+      await discoveryQueue.add("run", {}, { jobId: `discovery__${Date.now()}` });
       return;
     case "parse":
       return enqueueParse(id);
