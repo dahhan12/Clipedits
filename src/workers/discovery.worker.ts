@@ -7,6 +7,9 @@ import { runDiscovery } from "@/services/discovery/discoveryService";
 import { parseAndPersist } from "@/services/parsing/parseService";
 import { withJobRun } from "./jobRun";
 import { logger } from "@/lib/logging/logger";
+import { validateDeploymentEnv } from "@/lib/config/deployEnv";
+
+validateDeploymentEnv();
 
 /**
  * Two workers in one process:

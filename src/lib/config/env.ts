@@ -8,6 +8,8 @@ import { z } from "zod";
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  // Deployment tier, distinct from NODE_ENV. Gates public posting + prod-cred guards.
+  APP_ENV: z.enum(["local", "ci", "staging", "production"]).default("local"),
   APP_URL: z.string().url().default("http://localhost:3000"),
   ENCRYPTION_KEY: z.string().optional(),
   // Identifier for the CURRENT encryption key (bump on rotation, e.g. "1"→"2").

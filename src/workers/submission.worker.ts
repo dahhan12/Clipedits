@@ -7,6 +7,9 @@ import { trackSubmission } from "@/services/submission/trackingService";
 import { syncMetrics } from "@/services/submission/metricsService";
 import { syncEarnings } from "@/services/submission/earningsService";
 import { logger } from "@/lib/logging/logger";
+import { validateDeploymentEnv } from "@/lib/config/deployEnv";
+
+validateDeploymentEnv();
 
 /**
  * Phase 5 workers: submit (prepare/execute campaign submission) and track

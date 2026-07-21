@@ -5,6 +5,9 @@ import { withJobRun } from "./jobRun";
 import { renderCandidate } from "@/services/render/renderService";
 import { evaluateCompliance } from "@/services/compliance/complianceService";
 import { logger } from "@/lib/logging/logger";
+import { validateDeploymentEnv } from "@/lib/config/deployEnv";
+
+validateDeploymentEnv();
 
 /**
  * Phase 3 workers: render → compliance. Render produces the 9:16 MP4 and, on

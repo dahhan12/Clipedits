@@ -5,6 +5,9 @@ import { withJobRun } from "./jobRun";
 import { publishClip } from "@/services/publishing/publishService";
 import { logger } from "@/lib/logging/logger";
 import type { Platform, PublicationMode } from "@/generated/prisma";
+import { validateDeploymentEnv } from "@/lib/config/deployEnv";
+
+validateDeploymentEnv();
 
 /**
  * Phase 4 worker: publish. Each job is wrapped in an idempotent JobRun; the

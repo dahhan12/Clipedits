@@ -1,4 +1,5 @@
 import { env } from "@/lib/config/env";
+import { publicPostingAllowedByEnv } from "@/lib/config/deployEnv";
 import type { Platform } from "@/generated/prisma";
 
 /**
@@ -28,6 +29,8 @@ export interface CapabilityInput {
   providerHealthy?: boolean;
   /** Override the platform-audited status (defaults to the env-derived value). */
   audited?: boolean;
+  /** Whether the deployment tier permits public posting (defaults to env). */
+  envAllowsPublic?: boolean;
 }
 
 export interface CapabilityResult {
@@ -52,6 +55,7 @@ function platformAudited(platform: Platform): boolean {
 
 export function computeCapabilities(input: CapabilityInput): CapabilityResult {
   const healthy = input.providerHealthy !== false;
+  const envAllowsPublic = input.envAllowsPublic ?? publicPostingAllowedByEnv();
   const caps = new Set<Capability>(["EXPORT_ONLY", "LOCAL_DRAFT"]);
   const reasons: string[] = [];
 
@@ -59,6 +63,12 @@ export function computeCapabilities(input: CapabilityInput): CapabilityResult {
   if (input.complianceOutcome === "FAIL") {
     reasons.push("A compliance check FAILed — publishing is blocked.");
     return { capabilities: [...caps], maxMode: "MANUAL", canPublishPublicly: false, reasons };
+  }
+  // Non-staging/production tiers can never publish publicly, regardless of audit.
+  if (!envAllowsPublic) {
+    caps.add("PLATFORM_DRAFT");
+    reasons.push("This environment (local/CI) does not permit public posting — draft only.");
+    return { capabilities: [...caps], maxMode: "DRAFT", canPublishPublicly: false, reasons };
   }
   if (!input.accountConnected) {
     reasons.push(`No connected ${input.platform} account — only local draft/export is available.`);

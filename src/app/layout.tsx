@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import { sessionFromCookieHeader } from "@/lib/security/session";
+import { appEnv } from "@/lib/config/deployEnv";
 import { SessionBar } from "@/components/SessionBar";
 
 export const metadata: Metadata = {
@@ -42,7 +43,26 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             </nav>
             <SessionBar role={session?.role ?? null} />
           </aside>
-          <main className="main">{children}</main>
+          <main className="main">
+            {appEnv() !== "production" && (
+              <div
+                style={{
+                  background: appEnv() === "staging" ? "#7c4d00" : "#334",
+                  color: "#fff",
+                  padding: "6px 12px",
+                  borderRadius: 6,
+                  marginBottom: 14,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  letterSpacing: "0.03em",
+                }}
+              >
+                {appEnv().toUpperCase()} ENVIRONMENT — not production. Public posting is{" "}
+                {appEnv() === "staging" || appEnv() === "production" ? "enabled for test accounts" : "disabled (draft only)"}.
+              </div>
+            )}
+            {children}
+          </main>
         </div>
       </body>
     </html>

@@ -5,6 +5,7 @@ const base = {
   accountConnected: true,
   requiresInAppAudioOrEffects: false,
   complianceOutcome: "PASS" as const,
+  envAllowsPublic: true, // isolate audit gating from deploy-tier gating
 };
 
 describe("computeCapabilities", () => {
@@ -45,6 +46,13 @@ describe("computeCapabilities", () => {
     const r = computeCapabilities({ ...base, platform: "TIKTOK", audited: true });
     expect(r.capabilities).toContain("DIRECT_POST");
     expect(r.maxMode).toBe("AUTO");
+  });
+
+  it("local/CI tier can never publish publicly, even audited + compliant", () => {
+    const r = computeCapabilities({ ...base, platform: "TIKTOK", audited: true, envAllowsPublic: false });
+    expect(r.canPublishPublicly).toBe(false);
+    expect(r.maxMode).toBe("DRAFT");
+    expect(r.reasons.join(" ")).toMatch(/does not permit public posting/);
   });
 
   it("audited YouTube with unresolved REVIEW stays draft", () => {

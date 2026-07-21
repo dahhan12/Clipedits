@@ -6,6 +6,9 @@ import { ingestCampaignResources } from "@/services/ingestion/downloadService";
 import { transcribeAsset } from "@/services/pipeline/transcribeService";
 import { generateClipCandidates } from "@/services/pipeline/clipCandidateService";
 import { logger } from "@/lib/logging/logger";
+import { validateDeploymentEnv } from "@/lib/config/deployEnv";
+
+validateDeploymentEnv();
 
 /**
  * Phase 2 pipeline workers: ingest → transcribe → clip. Each job is wrapped in
