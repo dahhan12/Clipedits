@@ -22,6 +22,7 @@ const NAV: Array<{ href: string; label: string }> = [
   { href: "/submissions", label: "Submissions" },
   { href: "/earnings", label: "Earnings" },
   { href: "/jobs", label: "Errors & jobs" },
+  { href: "/providers", label: "Provider readiness" },
 ];
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
