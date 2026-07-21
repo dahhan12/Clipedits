@@ -29,12 +29,13 @@ approvals (TikTok/IG/YouTube) remain outstanding. It is suitable for an
 | P0-6 | Media hardening | ffmpeg `shell:false` + hard timeout/kill; `validateMedia` probe-gate (corrupt/dimension/duration/stream caps); temp-dir cleanup; `assertSafeKey` path-traversal guard | Integration (corrupt reject, caps, missing-audio allowed, traversal keys) + real render smoke |
 | P0-7 | Distributed rate limiting | Redis atomic limiter; enforced on login/publish/submit/reparse/download/clipGen/campaignCreate | Integration (limit+block+retry-after; per-key isolation) |
 
-**Test totals:** 86 unit tests + 31 integration tests (real Postgres + Redis +
+**Test totals:** 113 unit tests + 42 integration tests (real Postgres + Redis +
 ffmpeg; integration suites self-skip without those services). `typecheck`,
 `lint`, and the production `build` pass. A real end-to-end render produces a
 genuine 1080×1920 H.264/AAC MP4 + thumbnail with 21+ compliance checks executing,
-including the `sourcePermission=REVIEW` gate. (Unit total includes the P1-8 eval,
-P1-10 envelope, and P1-9 failure-classifier suites.)
+including the `sourcePermission=REVIEW` and perceptual-duplicate gates. (Unit
+total includes the P1-8 eval, P1-9 failure-classifier, P1-10 envelope, P2-13
+perceptual-hash, P2-14 cost-control, and P2-15 review suites.)
 
 ## 2. Migrations added
 
