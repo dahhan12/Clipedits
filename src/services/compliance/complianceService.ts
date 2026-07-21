@@ -5,6 +5,8 @@ import { RenderManifestSchema } from "@/lib/schemas/render";
 import { CampaignRulesSchema, type CampaignRules, type CampaignPlatform } from "@/lib/schemas/campaign";
 import { runDeterministicChecks, overallOutcome, type ComplianceContext, type Finding } from "./validators";
 import { semanticReview } from "./semanticReview";
+import { checkPermission } from "@/services/rights/permissionService";
+import type { Platform, TransformationType } from "@/generated/prisma";
 
 /**
  * Evaluate a rendered clip against the campaign rules and current campaign
@@ -34,6 +36,15 @@ export async function evaluateCompliance(renderedClipId: string): Promise<{ outc
   const captions = manifest.success ? manifest.data.captions : {};
   const overlaysApplied = manifest.success ? manifest.data.overlaysApplied : [];
 
+  // Rights/provenance: worst-case across target platforms for the applied
+  // transformations. Unverified/absent permission → REVIEW (never PASS).
+  const appliedTransforms = permissionTransforms(overlaysApplied, captions as Record<string, string>);
+  const sourcePermission = await worstPermission(
+    rendered.candidate.sourceAsset.id,
+    appliedTransforms,
+    (Object.keys(captions) as CampaignPlatform[]).length ? (Object.keys(captions) as CampaignPlatform[]) : rules.supportedPlatforms,
+  );
+
   const captionValues = Object.values(captions as Record<string, string>).filter(Boolean);
   const [publicationCount, duplicate, duplicateCaption, publicVerified] = await Promise.all([
     prisma.publication.count({
@@ -61,6 +72,7 @@ export async function evaluateCompliance(renderedClipId: string): Promise<{ outc
     overlaysApplied,
     captions: captions as Record<string, string>,
     originalSource: rendered.candidate.sourceAsset.originalSource,
+    sourcePermission,
     publicationCount,
     duplicate,
     duplicateCaption,
@@ -101,6 +113,39 @@ export async function evaluateCompliance(renderedClipId: string): Promise<{ outc
 function safeRules(value: unknown): CampaignRules | null {
   const parsed = CampaignRulesSchema.safeParse(value);
   return parsed.success ? parsed.data : null;
+}
+
+/** Transformations to rights-check, based on what the render actually applied. */
+function permissionTransforms(
+  overlays: { kind: string }[],
+  captions: Record<string, string>,
+): TransformationType[] {
+  const t: TransformationType[] = ["DOWNLOAD", "CLIP", "MODIFY", "PUBLISH"];
+  if (Object.values(captions).some(Boolean)) t.push("CAPTION");
+  if (overlays.length > 0) t.push("OVERLAY");
+  return t;
+}
+
+/** Combine per-platform permission checks into the strictest outcome. */
+async function worstPermission(
+  sourceAssetId: string,
+  transforms: TransformationType[],
+  platforms: CampaignPlatform[],
+): Promise<{ outcome: "PASS" | "FAIL" | "REVIEW"; reason: string }> {
+  const targets = platforms
+    .map((p) => (p === "TIKTOK" || p === "INSTAGRAM_REELS" || p === "YOUTUBE_SHORTS" ? (p as Platform) : null))
+    .filter((p): p is Platform => p !== null);
+  if (targets.length === 0) {
+    const c = await checkPermission(sourceAssetId, transforms);
+    return { outcome: c.outcome, reason: c.reason };
+  }
+  let worst: { outcome: "PASS" | "FAIL" | "REVIEW"; reason: string } = { outcome: "PASS", reason: "All platforms permitted" };
+  const rank = { PASS: 0, REVIEW: 1, FAIL: 2 } as const;
+  for (const platform of targets) {
+    const c = await checkPermission(sourceAssetId, transforms, platform);
+    if (rank[c.outcome] > rank[worst.outcome]) worst = { outcome: c.outcome, reason: `${platform}: ${c.reason}` };
+  }
+  return worst;
 }
 
 /** Duplicate if another rendered clip of the same candidate already has a publication. */

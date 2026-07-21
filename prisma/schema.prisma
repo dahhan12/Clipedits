@@ -124,6 +124,23 @@ enum PayoutStatus {
   PAID
 }
 
+enum PermissionStatus {
+  UNVERIFIED   // auto-derived from campaign text; not human-confirmed
+  PROVISIONAL  // derived and plausible, still needs review before public use
+  VERIFIED     // a human confirmed the rights evidence
+  REVOKED
+  DENIED
+}
+
+enum TransformationType {
+  DOWNLOAD
+  CLIP
+  MODIFY
+  CAPTION
+  OVERLAY
+  PUBLISH
+}
+
 enum Role {
   ADMIN
   OPERATOR
@@ -261,6 +278,7 @@ model SourceAsset {
 
   transcript Json?
   candidates ClipCandidate[]
+  permissions AssetPermission[]
 
   @@unique([campaignId, checksum])
   @@index([status])
@@ -440,6 +458,65 @@ model EarningsRecord {
   recordedAt    DateTime     @default(now())
 
   @@index([submissionId, recordedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Rights & provenance
+// ---------------------------------------------------------------------------
+
+// Proves WHY a source asset may be used, tied to the exact campaign revision
+// that authorised it. Unknown/unverified permission must never produce a
+// compliance PASS.
+model AssetPermission {
+  id                 String             @id @default(cuid())
+  sourceAsset        SourceAsset        @relation(fields: [sourceAssetId], references: [id], onDelete: Cascade)
+  sourceAssetId      String
+  // The campaign revision (page hash snapshot) that granted the rights.
+  campaignRevisionId String?
+  permissionType     String             // e.g. "CAMPAIGN_GRANT", "LICENSE", "OWNED"
+  permittedPlatforms Platform[]         @default([])
+  permittedTransformations TransformationType[] @default([])
+  validFrom          DateTime?
+  validUntil         DateTime?
+  evidenceUrl        String?
+  evidenceExcerpt    String?
+  evidenceHash       String?
+  verifiedByUserId   String?
+  verifiedAt         DateTime?
+  status             PermissionStatus   @default(UNVERIFIED)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@index([sourceAssetId, status])
+}
+
+// Field-level extraction evidence for a campaign revision.
+model RuleEvidence {
+  id                 String   @id @default(cuid())
+  campaignRevisionId String
+  fieldPath          String
+  sourceUrl          String?
+  sourceType         String   // "DOM" | "DOCUMENT" | "VISION" | "LLM" | "HUMAN"
+  excerpt            String?
+  screenshotStorageKey String?
+  contentHash        String?
+  capturedAt         DateTime @default(now())
+
+  @@index([campaignRevisionId, fieldPath])
+}
+
+// A captured snapshot of a platform's publishing policy/capabilities.
+model PlatformPolicySnapshot {
+  id                  String   @id @default(cuid())
+  platform            Platform
+  policyVersion       String
+  capturedAt          DateTime @default(now())
+  sourceUrl           String?
+  capabilities        String[] @default([])
+  restrictions        String[] @default([])
+  requiredHumanActions String[] @default([])
+
+  @@index([platform, capturedAt])
 }
 
 // ---------------------------------------------------------------------------

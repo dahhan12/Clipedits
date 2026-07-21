@@ -11,6 +11,7 @@ export type Action =
   | "campaign.create"
   | "campaign.reparse"
   | "rule.review"
+  | "rights.verify"
   | "resource.download"
   | "clip.generate"
   | "clip.approve"
@@ -26,6 +27,7 @@ const POLICY: Record<Role, Action[] | "*"> = {
     "campaign.create",
     "campaign.reparse",
     "rule.review",
+    "rights.verify",
     "resource.download",
     "clip.generate",
     "clip.approve",

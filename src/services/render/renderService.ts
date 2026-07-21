@@ -9,6 +9,7 @@ import { logger } from "@/lib/logging/logger";
 import { objectStore, ensureLocalFile } from "@/adapters/storage/objectStore";
 import { sha256Hex } from "@/lib/security/crypto";
 import { transition } from "@/lib/db/guardedTransition";
+import { assertRenderPermitted } from "@/services/rights/permissionService";
 import { probeVideoMeta, extractThumbnail } from "@/lib/media/ffmpeg";
 import { FfmpegRenderer } from "@/lib/media/render/ffmpegRenderer";
 import { RemotionRenderer } from "@/lib/media/render/remotionRenderer";
@@ -46,6 +47,10 @@ export async function renderCandidate(candidateId: string): Promise<{ renderedCl
   if (!rules) {
     throw new Error("Cannot render: campaign has no parsed rules");
   }
+
+  // Rights gate: never render an asset we are not permitted to download/clip/
+  // modify (throws on DENIED/uncovered; warns under provisional rights).
+  await assertRenderPermitted(asset.id);
 
   // Mark the candidate as RENDERING (APPROVED/FAILED → RENDERING). Tolerant of
   // an idempotent re-render where the candidate is already RENDERED.

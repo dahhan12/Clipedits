@@ -37,6 +37,8 @@ export interface ComplianceContext {
   overlaysApplied: AppliedOverlay[];
   captions: Record<string, string>;
   originalSource: string;
+  // Rights/provenance outcome for the applied transformations + target platforms.
+  sourcePermission: { outcome: Outcome; reason: string };
   publicationCount: number;
   duplicate: boolean;
   duplicateCaption: boolean;
@@ -83,6 +85,10 @@ export function checkFileFormat(ctx: ComplianceContext): Finding {
   return okContainer && okVideo && okAudio
     ? f("fileFormat", "PASS", `mp4/h264/${ctx.audioCodec ?? "no-audio"}`)
     : f("fileFormat", "FAIL", `Format ${ctx.container}/${ctx.videoCodec}/${ctx.audioCodec} not mp4/h264/aac`);
+}
+
+export function checkSourcePermission(ctx: ComplianceContext): Finding {
+  return f("sourcePermission", ctx.sourcePermission.outcome, ctx.sourcePermission.reason);
 }
 
 export function checkSourceEligibility(ctx: ComplianceContext): Finding {
@@ -251,6 +257,7 @@ export function runDeterministicChecks(ctx: ComplianceContext): Finding[] {
     checkDimensions(ctx),
     checkAspectRatio(ctx),
     checkFileFormat(ctx),
+    checkSourcePermission(ctx),
     checkSourceEligibility(ctx),
     checkMandatoryOverlays(ctx),
     checkMandatoryText(ctx),

@@ -37,6 +37,7 @@ function ctx(overrides: Partial<ComplianceContext> = {}): ComplianceContext {
     overlaysApplied: [],
     captions: { TIKTOK: "great clip #ad" },
     originalSource: "https://cdn.example.com/v.mp4",
+    sourcePermission: { outcome: "PASS", reason: "verified" },
     publicationCount: 0,
     duplicate: false,
     duplicateCaption: false,
@@ -122,6 +123,16 @@ describe("deterministic validators", () => {
 
   it("fails a closed campaign", () => {
     const findings = runDeterministicChecks(ctx({ campaignStatus: "CLOSED" }));
+    expect(overallOutcome(findings)).toBe("FAIL");
+  });
+
+  it("never PASSes overall when source permission is unverified (REVIEW)", () => {
+    const findings = runDeterministicChecks(ctx({ sourcePermission: { outcome: "REVIEW", reason: "provisional" } }));
+    expect(overallOutcome(findings)).toBe("REVIEW");
+  });
+
+  it("FAILs overall when source use is denied", () => {
+    const findings = runDeterministicChecks(ctx({ sourcePermission: { outcome: "FAIL", reason: "denied" } }));
     expect(overallOutcome(findings)).toBe("FAIL");
   });
 });

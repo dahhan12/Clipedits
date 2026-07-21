@@ -8,6 +8,8 @@ import { assertSafeUrl } from "@/lib/security/url";
 import { objectStore } from "@/adapters/storage/objectStore";
 import { resolveTargets } from "@/adapters/ingestion/resolvers";
 import { enqueueTranscribe } from "@/lib/queue/queues";
+import { deriveProvisionalPermission } from "@/services/rights/permissionService";
+import { CampaignRulesSchema } from "@/lib/schemas/campaign";
 
 /** Content types we accept for a downloaded source asset. */
 const ALLOWED_CONTENT_TYPES = [
@@ -65,7 +67,10 @@ export async function ingestCampaignResources(campaignId: string): Promise<Inges
         });
         summary.downloaded += 1;
         await prisma.campaignResource.update({ where: { id: resource.id }, data: { status: "DOWNLOADED" } });
-        if (asset) await enqueueTranscribe(asset.id);
+        if (asset) {
+          await deriveAssetPermission(campaignId, asset.id, resource.permitted, resource.url);
+          await enqueueTranscribe(asset.id);
+        }
       } catch (err) {
         summary.failed += 1;
         await prisma.campaignResource.update({ where: { id: resource.id }, data: { status: "FAILED" } });
@@ -76,6 +81,28 @@ export async function ingestCampaignResources(campaignId: string): Promise<Inges
 
   await audit({ action: "campaign.resources.ingested", entityType: "Campaign", entityId: campaignId, metadata: { ...summary } });
   return summary;
+}
+
+/** Derive a provisional rights record for a freshly downloaded asset. */
+async function deriveAssetPermission(
+  campaignId: string,
+  sourceAssetId: string,
+  permitted: boolean,
+  evidenceUrl: string,
+): Promise<void> {
+  const [ruleRow, revision] = await Promise.all([
+    prisma.campaignRule.findFirst({ where: { campaignId }, orderBy: { createdAt: "desc" } }),
+    prisma.campaignRevision.findFirst({ where: { campaignId }, orderBy: { capturedAt: "desc" } }),
+  ]);
+  const parsed = ruleRow ? CampaignRulesSchema.safeParse(ruleRow.rules) : null;
+  await deriveProvisionalPermission({
+    sourceAssetId,
+    campaignRevisionId: revision?.id ?? null,
+    permitted,
+    rules: parsed?.success ? parsed.data : null,
+    evidenceUrl,
+    evidenceExcerpt: `Campaign resource marked permitted=${permitted}`,
+  });
 }
 
 async function downloadOne(input: {
