@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logging/logger";
+import { utcToday } from "@/lib/time";
 
 /**
  * Per-provider API latency/error metrics.
@@ -15,11 +16,6 @@ import { logger } from "@/lib/logging/logger";
  * and swallowed.
  */
 
-function today(): Date {
-  const d = new Date();
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-}
-
 async function record(
   provider: string,
   operation: string,
@@ -27,7 +23,7 @@ async function record(
   ok: boolean,
   errorMessage?: string,
 ): Promise<void> {
-  const day = today();
+  const day = utcToday();
   const durationMs = Math.max(0, Math.round(ms));
   try {
     await prisma.providerStat.upsert({
@@ -96,7 +92,7 @@ export interface ProviderMetric {
 
 /** Aggregate provider metrics over the last `days` days (default 7). */
 export async function getProviderMetrics(days = 7): Promise<ProviderMetric[]> {
-  const since = today();
+  const since = utcToday();
   since.setUTCDate(since.getUTCDate() - (days - 1));
   try {
     const rows = await prisma.providerStat.groupBy({

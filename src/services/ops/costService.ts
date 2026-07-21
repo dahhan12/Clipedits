@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logging/logger";
+import { utcToday } from "@/lib/time";
 import { getGlobalDailyCapUsd } from "./killSwitch";
 
 /**
@@ -25,11 +26,6 @@ export const RATES = {
 } as const;
 
 export type UsageKind = "ai" | "render" | "transcribe" | "publish";
-
-function today(): Date {
-  const d = new Date();
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-}
 
 function wsKey(workspaceId: string | null | undefined): string {
   return workspaceId ?? SHARED_WORKSPACE;
@@ -64,7 +60,7 @@ export function estimateCostUsd(input: UsageInput): number {
 export async function recordUsage(input: UsageInput): Promise<void> {
   const cost = estimateCostUsd(input);
   const units = input.units ?? 1;
-  const day = today();
+  const day = utcToday();
   const workspaceId = wsKey(input.workspaceId);
   const inc = {
     aiCalls: input.kind === "ai" ? 1 : 0,
@@ -111,7 +107,7 @@ export interface BudgetStatus {
  * a correctness gate.
  */
 export async function getBudgetStatus(workspaceId: string | null | undefined): Promise<BudgetStatus> {
-  const day = today();
+  const day = utcToday();
   const wid = wsKey(workspaceId);
   try {
     const [row, globalCap, workspace] = await Promise.all([
@@ -152,7 +148,7 @@ export interface UsageSummaryRow {
 
 /** Recent per-(workspace, day) usage rows for the ops dashboard. */
 export async function getUsageSummary(days = 7): Promise<UsageSummaryRow[]> {
-  const since = today();
+  const since = utcToday();
   since.setUTCDate(since.getUTCDate() - (days - 1));
   try {
     const rows = await prisma.usageCounter.findMany({
