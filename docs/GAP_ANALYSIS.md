@@ -22,7 +22,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not yet.
 | Content Rewards Discover adapter (cards, ids, page hash, revisions) | ✅ | `ContentRewardsDiscoverAdapter` |
 | Whop community adapter (API + Playwright fallback, bot filter) | ✅ | `WhopForumAdapter` |
 | Store post text + timestamp as discovery evidence | 🟡 | Revision snapshot stored; raw Whop post text not persisted per-post |
-| **Manual campaign entry** (paste URL/text, upload screenshots/docs) | ⬜ | Not built — needs a form + `manual` adapter + parse-from-text path |
+| **Manual campaign entry** (paste URL/text) | ✅ | `MANUAL` source, `manualEntryService`, `/api/campaigns/manual`, `ManualCampaignForm`; pasted text parsed directly. Screenshot/document upload still ⬜ |
 
 ## Campaign schema (`CampaignRules`)
 
@@ -94,8 +94,8 @@ Legend: ✅ done · 🟡 partial · ⬜ not yet.
 | BullMQ queues | 🟡 | Have discovery/parse/ingest/transcribe/clip/render/compliance/publish/submit/track; **revision-check, scene-detection (own queue), metrics-sync, earnings-sync, cleanup** ⬜ |
 | Retries, backoff, attempts, error capture, audit | ✅ | |
 | Dashboard pages (campaigns, rules, assets, candidates, preview, compliance, queue, publications, submissions, earnings, jobs) | ✅ | 11 pages |
-| **Rule review screen with manual correction → new revision** | ⬜ | Rules are read-only in UI today |
-| **Compare revisions** action | ⬜ | Revisions stored; no diff UI |
+| **Rule review screen with manual correction → new revision** | ✅ | `RuleEditor` + `/api/campaigns/[id]/rules` + `ruleReviewService`; edits saved as a separate reviewed revision |
+| **Compare revisions** action | ✅ | `/campaigns/[id]/revisions` lists rule revisions and diffs the two most recent |
 | Tailwind CSS | ⬜ | Hand-rolled CSS (`globals.css`) instead of Tailwind |
 | Profitability / priority scoring | ⬜ | Not built |
 | Security: SSRF, encryption, redaction, RBAC, audit, env validation, worker timeouts | ✅ | |
@@ -106,11 +106,12 @@ Legend: ✅ done · 🟡 partial · ⬜ not yet.
 
 ## Suggested next steps to reach full spec parity
 
-1. **Manual campaign entry** (paste URL/text/upload) — highest user-facing value.
-2. **Rule review UI** with manual corrections saved as a new reviewed revision, plus **revision compare**.
-3. **Schema enrichment** to the nested shape + missing fields; add the three-band confidence thresholds.
-4. **Metrics/earnings**: `metrics-sync` + `earnings-sync` queues, `PostMetric`/`EarningsRecord` models, approval polling, confirmed earnings & payout status.
-5. **Rendering polish**: audio normalization, silence trim, thumbnails, animated captions (Remotion), face-aware crop.
-6. **Profitability scoring** to prioritise campaigns before expensive processing.
-7. **Web hardening**: CSRF, rate limiting, secure cookies, R2 pre-signed URLs, `User`/`Workspace` + real auth.
-8. **Word-level Whisper transcription** adapter.
+Done: ~~manual campaign entry~~ ✅, ~~rule review UI + revision compare~~ ✅.
+
+1. **Schema enrichment** to the nested shape + missing fields; add the three-band confidence thresholds (0.90 / 0.75).
+2. **Metrics/earnings**: `metrics-sync` + `earnings-sync` queues, `PostMetric`/`EarningsRecord` models, approval polling, confirmed earnings & payout status.
+3. **Profitability scoring** to prioritise campaigns before expensive processing.
+4. **Rendering polish**: audio normalization, silence trim, thumbnails, animated captions (Remotion), face-aware crop.
+5. **Web hardening**: CSRF, rate limiting, secure cookies, R2 pre-signed URLs, `User`/`Workspace` + real auth.
+6. **Word-level Whisper transcription** adapter.
+7. **Screenshot/document upload** for manual campaign entry (Claude vision / PDF text).
