@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# Never allow production credentials/approvals in CI (deployEnv guard also enforces this).
+env:
+  APP_ENV: ci
+  NODE_ENV: test
+  DATABASE_URL: postgresql://clipper:clipper@localhost:5432/campaignclipper_ci?schema=public
+  REDIS_URL: redis://localhost:6379
+  ENCRYPTION_KEY: dGVzdC1lbmNyeXB0aW9uLWtleS0zMi1ieXRlcy1sb25nISE=
+  SESSION_SECRET: ci-session-secret
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: clipper
+          POSTGRES_PASSWORD: clipper
+          POSTGRES_DB: campaignclipper_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U clipper -d campaignclipper_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install ffmpeg (media pipeline + adversarial tests)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate
+        run: npx prisma generate
+
+      - name: Validate & apply migrations (fails on drift / bad migration)
+        run: npx prisma migrate deploy
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Integration tests (Postgres + Redis + ffmpeg)
+        run: npm run test:integration
+
+      - name: Production build
+        run: npm run build
+
+      - name: Dependency scan — production deps (gating, high/critical)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Dependency scan — full incl. dev (report only)
+        run: npm audit || true
+
+      - name: AI evaluation (sandbox smoke — non-gating without a model key)
+        run: npm run eval
