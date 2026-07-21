@@ -71,6 +71,11 @@ const EnvSchema = z.object({
   INSTAGRAM_APP_SECRET: z.string().optional(),
   YOUTUBE_CLIENT_ID: z.string().optional(),
   YOUTUBE_CLIENT_SECRET: z.string().optional(),
+  // Real provider approval/audit status. Default false — the app must NOT claim
+  // public posting until these are explicitly set after passing provider review.
+  TIKTOK_AUDITED: z.string().default("false").transform((v) => v === "true"),
+  INSTAGRAM_APPROVED: z.string().default("false").transform((v) => v === "true"),
+  YOUTUBE_API_VERIFIED: z.string().default("false").transform((v) => v === "true"),
 
   // --- Submission ---
   // When true, the final Playwright submission step still requires an explicit

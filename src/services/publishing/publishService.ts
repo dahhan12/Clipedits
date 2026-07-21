@@ -11,6 +11,7 @@ import { YouTubeShortsProvider } from "@/adapters/publishing/youtube";
 import type { PublishProvider } from "@/adapters/publishing/types";
 import { enqueueSubmission } from "@/lib/queue/queues";
 import { transition } from "@/lib/db/guardedTransition";
+import { computeCapabilities } from "./capabilityService";
 import type { Platform, PublicationMode } from "@/generated/prisma";
 
 const PROVIDERS: Record<Platform, PublishProvider> = {
@@ -54,19 +55,24 @@ export async function publishClip(req: PublishRequest): Promise<{ publicationId:
   if (gate.hasFail) {
     return skip(req, "Blocked: a compliance check FAILed");
   }
-  if (mode === "AUTO" && gate.hasReview) {
-    mode = "DRAFT";
-    downgradeReasons.push("compliance REVIEW present");
-  }
-  if (mode === "AUTO" && requiresInApp) {
-    mode = "DRAFT";
-    downgradeReasons.push("requires in-app audio/effects");
-  }
 
   const caption = manifest.success ? manifest.data.captions[platformKey(req.platform)] ?? "" : "";
   const account = await prisma.socialAccount.findFirst({
     where: { platform: req.platform, active: true },
   });
+
+  // Platform capability gating: never AUTO-publish when the provider/app cannot
+  // actually perform a public post (unaudited app, unverified project, etc.).
+  const capability = computeCapabilities({
+    platform: req.platform,
+    accountConnected: !!account,
+    requiresInAppAudioOrEffects: requiresInApp,
+    complianceOutcome: gate.hasReview ? "REVIEW" : "PASS",
+  });
+  if (mode === "AUTO" && capability.maxMode !== "AUTO") {
+    mode = "DRAFT";
+    downgradeReasons.push(...capability.reasons);
+  }
   const accessToken = account ? (await getAccessToken(account.id)) ?? undefined : undefined;
 
   const idempotencyKey = `${mode}`;

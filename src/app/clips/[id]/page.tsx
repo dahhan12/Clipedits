@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { RenderManifestSchema } from "@/lib/schemas/render";
 import { PublishControls } from "@/components/PublishControls";
+import { computeCapabilities } from "@/services/publishing/capabilityService";
+import type { Platform } from "@/generated/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +23,31 @@ export default async function ClipPreviewPage({ params }: { params: Promise<{ id
   if (!clip) notFound();
 
   const hasFail = clip.compliance.some((r) => r.outcome === "FAIL");
+  const overall: "PASS" | "REVIEW" | "FAIL" = hasFail
+    ? "FAIL"
+    : clip.compliance.some((r) => r.outcome === "REVIEW")
+      ? "REVIEW"
+      : "PASS";
+  const manifestForCaps = RenderManifestSchema.safeParse(clip.renderManifest);
+  const requiresInApp = manifestForCaps.success && manifestForCaps.data.requiresInAppAudioOrEffects;
+
+  const platforms: Platform[] = ["TIKTOK", "INSTAGRAM_REELS", "YOUTUBE_SHORTS"];
+  const connected = await prisma.socialAccount
+    .findMany({ where: { active: true, platform: { in: platforms } }, select: { platform: true } })
+    .catch(() => [] as { platform: Platform }[]);
+  const connectedSet = new Set(connected.map((c) => c.platform));
+
+  const capabilities = Object.fromEntries(
+    platforms.map((p) => {
+      const cap = computeCapabilities({
+        platform: p,
+        accountConnected: connectedSet.has(p),
+        requiresInAppAudioOrEffects: requiresInApp,
+        complianceOutcome: overall,
+      });
+      return [p, { canPublishNow: cap.maxMode === "AUTO", reasons: cap.reasons }];
+    }),
+  );
 
   const manifest = RenderManifestSchema.safeParse(clip.renderManifest);
   const campaign = clip.candidate.sourceAsset.campaign;
@@ -85,7 +112,7 @@ export default async function ClipPreviewPage({ params }: { params: Promise<{ id
             {hasFail ? (
               <p className="badge bad">Blocked: a compliance check failed. Fix and re-render before publishing.</p>
             ) : (
-              <PublishControls clipId={clip.id} />
+              <PublishControls clipId={clip.id} capabilities={capabilities} />
             )}
             {clip.publications.length > 0 && (
               <table style={{ marginTop: 12 }}>
