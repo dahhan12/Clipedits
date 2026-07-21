@@ -15,3 +15,5 @@ tmp/
 storage/
 playwright-state/
 *.tsbuildinfo
+dump.rdb
+*.rdb
