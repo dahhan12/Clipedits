@@ -113,7 +113,17 @@ path. Everything third-party is `IMPLEMENTED_NOT_VERIFIED`, `SANDBOX_VERIFIED`,
   deadline after each publish. Admin controls route `/api/ops/killswitch` +
   dashboard controls & spend table. Unit (`costControls.test.ts`) + integration
   (`costControls.itest.ts`: kill-switch skip, cap enforcement, auto-pause).
-- **P2-16** — disaster-recovery validation & runbooks.
+- **P2-16 (done)** — `docs/RUNBOOKS.md` (emergency stop, worker-down,
+  dead-letter triage, backlog, compliance/REVIEW override, stop conditions,
+  spend cap, rotation, migration, provider outage) + `docs/DISASTER_RECOVERY.md`
+  (state inventory, RPO/RTO, backup & restore procedure, drill cadence) +
+  `scripts/dr-verify.ts` (`npm run dr:verify`: connectivity, migration-status,
+  core-table, DB read/write canary, object-store round-trip — the go/no-go
+  signal for a restore cutover).
+
+**P2 is complete.** The only remaining hardening item from the whole pass is the
+deliberately-deferred **OpenTelemetry distributed tracing** (P1-9), pending a
+collector-backend decision; correlation-id log tracing covers the gap today.
 - **P0 follow-ups:** queue payloads don't yet carry workspaceId for worker
   re-verification (mitigated: enqueue routes are ownership-checked); rate limiting
   has a coarse per-instance edge layer in addition to the authoritative Redis one.

@@ -17,6 +17,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "rotate:secrets": "tsx scripts/rotate-secrets.ts",
+    "dr:verify": "tsx scripts/dr-verify.ts",
     "seed:demo": "tsx scripts/seed-demo.ts",
     "seed:admin": "tsx scripts/seed-admin.ts",
     "worker:discovery": "tsx src/workers/discovery.worker.ts",
