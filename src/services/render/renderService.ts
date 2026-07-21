@@ -11,6 +11,7 @@ import { sha256Hex } from "@/lib/security/crypto";
 import { transition } from "@/lib/db/guardedTransition";
 import { assertRenderPermitted } from "@/services/rights/permissionService";
 import { probeVideoMeta, extractThumbnail, validateMedia, FfmpegUnavailable } from "@/lib/media/ffmpeg";
+import { computePerceptualHash, computeAudioHash } from "@/lib/media/perceptualHash";
 import { FfmpegRenderer } from "@/lib/media/render/ffmpegRenderer";
 import { RemotionRenderer } from "@/lib/media/render/remotionRenderer";
 import type { OverlayRenderer } from "@/lib/media/render/types";
@@ -130,6 +131,13 @@ export async function renderCandidate(candidateId: string): Promise<{ renderedCl
     logger.warn({ err, candidateId }, "Thumbnail extraction failed");
   }
 
+  // Perceptual + audio fingerprints of the rendered output for near-duplicate
+  // detection (null when ffmpeg is unavailable or there is no audio track).
+  const [perceptualHash, audioHash] = await Promise.all([
+    computePerceptualHash(outputPath).catch(() => null),
+    computeAudioHash(outputPath).catch(() => null),
+  ]);
+
   const captions = await buildCaptions(rules, excerpt(asset.transcript, candidate.startSec, candidate.endSec));
 
   const manifest = RenderManifestSchema.parse({
@@ -178,6 +186,8 @@ export async function renderCandidate(candidateId: string): Promise<{ renderedCl
     durationSec: meta?.durationSec ?? candidate.endSec - candidate.startSec,
     videoCodec: meta?.videoCodec ?? "h264",
     audioCodec: meta?.audioCodec ?? "aac",
+    perceptualHash,
+    audioHash,
     renderManifest: manifest,
   };
   const rendered = await prisma.renderedClip.upsert({

@@ -42,6 +42,9 @@ export interface ComplianceContext {
   publicationCount: number;
   duplicate: boolean;
   duplicateCaption: boolean;
+  // Perceptual/audio near-duplicate against an already-published clip in this
+  // campaign, if any (see perceptualHash detection). null = not evaluated.
+  perceptualDuplicate: { renderedClipId: string; videoDistance: number; audioMatch: boolean } | null;
   publicVerified: boolean | null;
   targetPlatforms: CampaignPlatform[];
   now: Date;
@@ -181,6 +184,17 @@ export function checkDuplicate(ctx: ComplianceContext): Finding {
     : f("duplicateContent", "PASS", "No duplicate detected");
 }
 
+export function checkPerceptualDuplicate(ctx: ComplianceContext): Finding {
+  const d = ctx.perceptualDuplicate;
+  if (!d) return f("perceptualDuplicate", "PASS", "No perceptual near-duplicate detected");
+  const pct = (d.videoDistance * 100).toFixed(1);
+  return f(
+    "perceptualDuplicate",
+    "FAIL",
+    `Near-duplicate of already-published clip ${d.renderedClipId} (video ${pct}% diff${d.audioMatch ? ", audio match" : ""})`,
+  );
+}
+
 export function checkCampaignStatus(ctx: ComplianceContext): Finding {
   const ok = ["ACTIVE", "PARSED", "DISCOVERED"];
   const bad = ["CLOSED", "PAUSED", "ERROR"];
@@ -268,6 +282,7 @@ export function runDeterministicChecks(ctx: ComplianceContext): Finding[] {
     checkMaxPosts(ctx),
     checkDuplicate(ctx),
     checkDuplicateCaption(ctx),
+    checkPerceptualDuplicate(ctx),
     checkCampaignStatus(ctx),
     checkRemainingBudget(ctx),
     checkFileSize(ctx),

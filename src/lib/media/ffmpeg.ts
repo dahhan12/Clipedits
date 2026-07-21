@@ -63,6 +63,20 @@ function run(
   });
 }
 
+/**
+ * Escape hatch for advanced media ops (e.g. perceptual hashing) that need to run
+ * ffmpeg/ffprobe directly, while keeping the same hardened spawn: no shell, a
+ * hard SIGKILL timeout, and captured logs. Output should be written to files
+ * (not stdout) since stdout here is decoded as text and would corrupt binary.
+ */
+export async function runMedia(
+  bin: "ffmpeg" | "ffprobe",
+  args: string[],
+  opts: { timeoutMs?: number } = {},
+): Promise<{ stdout: string; stderr: string }> {
+  return run(bin, args, opts);
+}
+
 export interface VideoMeta {
   width: number | null;
   height: number | null;

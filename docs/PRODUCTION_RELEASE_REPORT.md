@@ -83,8 +83,13 @@ path. Everything third-party is `IMPLEMENTED_NOT_VERIFIED`, `SANDBOX_VERIFIED`,
   a collector endpoint (an infra decision), and correlation-id log tracing
   already threads a single job across stages; wire OTel once a backend
   (Tempo/Honeycomb/etc.) is chosen.
-- **P2-13..16** — perceptual/audio duplicate detection (columns exist, logic
-  pending), cost/capacity controls & kill switches, operator pre-publication
+- **P2-13 (done)** — perceptual/audio near-duplicate detection: `perceptualHash.ts`
+  computes a dHash over sampled frames + a median-thresholded audio envelope
+  fingerprint; `renderService` persists both to `RenderedClip`; `complianceService`
+  FAILs a clip that is within threshold of an already-published clip in the same
+  campaign (`checkPerceptualDuplicate`). Unit-tested (`perceptualHash.test.ts`) +
+  real-ffmpeg integration test (re-encode matches, distinct clip separates).
+- **P2-14..16** — cost/capacity controls & kill switches, operator pre-publication
   screen with override audit, disaster-recovery validation & runbooks.
 - **P0 follow-ups:** queue payloads don't yet carry workspaceId for worker
   re-verification (mitigated: enqueue routes are ownership-checked); rate limiting

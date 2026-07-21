@@ -6,7 +6,13 @@ import { CampaignRulesSchema, type CampaignRules, type CampaignPlatform } from "
 import { runDeterministicChecks, overallOutcome, type ComplianceContext, type Finding } from "./validators";
 import { semanticReview } from "./semanticReview";
 import { checkPermission } from "@/services/rights/permissionService";
+import { normalizedDistance, isNearDuplicate } from "@/lib/media/perceptualHash";
 import type { Platform, TransformationType } from "@/generated/prisma";
+
+/** Video-distance threshold (≤10% of bits differ) for a perceptual near-duplicate. */
+const PERCEPTUAL_MAX_RATIO = 0.1;
+/** Audio fingerprints within 15% count as a match (looser: coarser fingerprint). */
+const AUDIO_MAX_RATIO = 0.15;
 
 /**
  * Evaluate a rendered clip against the campaign rules and current campaign
@@ -46,12 +52,13 @@ export async function evaluateCompliance(renderedClipId: string): Promise<{ outc
   );
 
   const captionValues = Object.values(captions as Record<string, string>).filter(Boolean);
-  const [publicationCount, duplicate, duplicateCaption, publicVerified] = await Promise.all([
+  const [publicationCount, duplicate, duplicateCaption, perceptualDuplicate, publicVerified] = await Promise.all([
     prisma.publication.count({
       where: { renderedClip: { candidate: { sourceAsset: { campaignId: campaign.id } } } },
     }),
     hasDuplicate(rendered.candidateId, renderedClipId),
     hasDuplicateCaption(campaign.id, renderedClipId, captionValues),
+    findPerceptualDuplicate(campaign.id, renderedClipId, rendered.perceptualHash, rendered.audioHash),
     latestPublicVerified(renderedClipId),
   ]);
 
@@ -76,6 +83,7 @@ export async function evaluateCompliance(renderedClipId: string): Promise<{ outc
     publicationCount,
     duplicate,
     duplicateCaption,
+    perceptualDuplicate,
     publicVerified,
     targetPlatforms,
     now: new Date(),
@@ -173,6 +181,42 @@ async function hasDuplicateCaption(
     },
   });
   return count > 0;
+}
+
+/**
+ * Perceptual/audio near-duplicate detection: compare this clip's fingerprints
+ * against every OTHER already-published rendered clip in the same campaign. This
+ * catches re-encodes / minor edits of content already posted — which the exact
+ * `renderConfigHash` idempotency key and the same-candidate `hasDuplicate` check
+ * cannot see. Returns the closest match within threshold, or null.
+ */
+async function findPerceptualDuplicate(
+  campaignId: string,
+  renderedClipId: string,
+  perceptualHash: string | null,
+  audioHash: string | null,
+): Promise<{ renderedClipId: string; videoDistance: number; audioMatch: boolean } | null> {
+  if (!perceptualHash) return null; // nothing to compare (ffmpeg absent at render time)
+  const others = await prisma.renderedClip.findMany({
+    where: {
+      id: { not: renderedClipId },
+      perceptualHash: { not: null },
+      candidate: { sourceAsset: { campaignId } },
+      publications: { some: {} }, // only already-published clips
+    },
+    select: { id: true, perceptualHash: true, audioHash: true },
+  });
+  let best: { renderedClipId: string; videoDistance: number; audioMatch: boolean } | null = null;
+  for (const o of others) {
+    if (!o.perceptualHash) continue;
+    const videoDistance = normalizedDistance(perceptualHash, o.perceptualHash);
+    if (videoDistance > PERCEPTUAL_MAX_RATIO) continue;
+    const audioMatch = isNearDuplicate(audioHash, o.audioHash, AUDIO_MAX_RATIO);
+    if (!best || videoDistance < best.videoDistance) {
+      best = { renderedClipId: o.id, videoDistance, audioMatch };
+    }
+  }
+  return best;
 }
 
 /** Most recent public-verification state across this clip's publications, if any. */

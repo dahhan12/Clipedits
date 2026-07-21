@@ -41,6 +41,7 @@ function ctx(overrides: Partial<ComplianceContext> = {}): ComplianceContext {
     publicationCount: 0,
     duplicate: false,
     duplicateCaption: false,
+    perceptualDuplicate: null,
     publicVerified: null,
     targetPlatforms: ["TIKTOK"],
     now: new Date("2026-01-01T00:00:00Z"),
