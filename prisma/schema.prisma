@@ -126,6 +126,11 @@ enum PayoutStatus {
   PAID
 }
 
+enum ReviewDecision {
+  APPROVED
+  REJECTED
+}
+
 enum PermissionStatus {
   UNVERIFIED   // auto-derived from campaign text; not human-confirmed
   PROVISIONAL  // derived and plausible, still needs review before public use
@@ -336,9 +341,30 @@ model RenderedClip {
 
   compliance   ComplianceResult[]
   publications Publication[]
+  reviews      PrePublicationReview[]
 
   @@unique([candidateId, renderConfigHash])
   @@index([candidateId])
+}
+
+/// Operator pre-publication decision + override audit trail. Records a human's
+/// APPROVED/REJECTED verdict on a rendered clip for a platform, the justification,
+/// and exactly which REVIEW findings were acknowledged. An APPROVED review lets
+/// publishing proceed at AUTO despite REVIEW findings; a FAIL is never waivable.
+model PrePublicationReview {
+  id                 String         @id @default(cuid())
+  renderedClip       RenderedClip   @relation(fields: [renderedClipId], references: [id], onDelete: Cascade)
+  renderedClipId     String
+  platform           Platform
+  mode               PublicationMode
+  decision           ReviewDecision
+  reviewerId         String
+  justification      String
+  // Names of REVIEW compliance checks the reviewer explicitly acknowledged.
+  acknowledgedChecks String[]
+  createdAt          DateTime       @default(now())
+
+  @@index([renderedClipId, platform, createdAt])
 }
 
 // ---------------------------------------------------------------------------

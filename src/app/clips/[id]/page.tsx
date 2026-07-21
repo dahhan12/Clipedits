@@ -4,7 +4,10 @@ import { prisma } from "@/lib/db/prisma";
 import { actorFromHeaders, assertClipAccess, WorkspaceForbiddenError } from "@/lib/db/workspaceScope";
 import { RenderManifestSchema } from "@/lib/schemas/render";
 import { PublishControls } from "@/components/PublishControls";
+import { PrePublicationReviewPanel } from "@/components/PrePublicationReviewPanel";
 import { computeCapabilities } from "@/services/publishing/capabilityService";
+import { evaluateReviewability } from "@/services/publishing/prePublicationService";
+import { currentRole, can } from "@/lib/security/rbac";
 import type { Platform } from "@/generated/prisma";
 
 export const dynamic = "force-dynamic";
@@ -60,6 +63,12 @@ export default async function ClipPreviewPage({ params }: { params: Promise<{ id
   const manifest = RenderManifestSchema.safeParse(clip.renderManifest);
   const campaign = clip.candidate.sourceAsset.campaign;
 
+  // Operator override eligibility: only when there are REVIEW findings, no FAIL,
+  // and the caller may auto-publish (publish.now → ADMIN).
+  const reviewability = evaluateReviewability(clip.compliance.map((c) => ({ check: c.check, outcome: c.outcome })));
+  const canReview = can(currentRole(await headers()), "publish.now");
+  const showReviewPanel = overall === "REVIEW" && !hasFail && canReview;
+
   return (
     <div>
       <h2>
@@ -113,6 +122,15 @@ export default async function ClipPreviewPage({ params }: { params: Promise<{ id
                 ))}
               </div>
             </>
+          )}
+
+          {showReviewPanel && (
+            <PrePublicationReviewPanel
+              clipId={clip.id}
+              waivableChecks={reviewability.waivableChecks}
+              blockingChecks={reviewability.blockingChecks}
+              platforms={platforms}
+            />
           )}
 
           <div className="card">

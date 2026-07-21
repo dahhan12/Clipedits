@@ -41,7 +41,9 @@ P1-10 envelope, and P1-9 failure-classifier suites.)
 `idempotency_state_versions`, `rights_provenance`, `metrics_and_earnings`
 (earlier), `multitenant_workspace`, `dead_letter_and_provider_stats` (P1-9
 advanced: `DEAD_LETTER` job status, `JobRun.failureCategory`/`deadLetteredAt`/
-`updatedAt`, `ProviderStat` table), plus the pre-existing phase migrations. All
+`updatedAt`, `ProviderStat` table), `prepublication_review` (P2-15:
+`PrePublicationReview` table + `ReviewDecision` enum), plus the pre-existing
+phase migrations. All
 are recorded in `prisma/migrations`; `prisma migrate status` reports the DB in
 sync. Apply in production with `prisma migrate deploy`.
 
@@ -89,8 +91,17 @@ path. Everything third-party is `IMPLEMENTED_NOT_VERIFIED`, `SANDBOX_VERIFIED`,
   FAILs a clip that is within threshold of an already-published clip in the same
   campaign (`checkPerceptualDuplicate`). Unit-tested (`perceptualHash.test.ts`) +
   real-ffmpeg integration test (re-encode matches, distinct clip separates).
-- **P2-14..16** — cost/capacity controls & kill switches, operator pre-publication
-  screen with override audit, disaster-recovery validation & runbooks.
+- **P2-15 (done)** — operator pre-publication review + override audit trail:
+  `PrePublicationReview` model records an APPROVED/REJECTED verdict, the
+  justification, and exactly which REVIEW checks were acknowledged;
+  `prePublicationService` enforces that a FAIL and safety-critical REVIEWs
+  (rights/provenance, prohibited content, duplicates) are **never** waivable;
+  an approved override lets `publishClip` proceed at AUTO despite waivable
+  REVIEWs. Route `/api/clips/[id]/review` (RBAC `publish.now`, CSRF) + an
+  operator panel on the clip page. Unit (`prePublicationReview.test.ts`) +
+  integration (`prePublicationReview.itest.ts`).
+- **P2-14, P2-16** — cost/capacity controls & kill switches, disaster-recovery
+  validation & runbooks.
 - **P0 follow-ups:** queue payloads don't yet carry workspaceId for worker
   re-verification (mitigated: enqueue routes are ownership-checked); rate limiting
   has a coarse per-instance edge layer in addition to the authoritative Redis one.

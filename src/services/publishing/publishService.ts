@@ -12,6 +12,7 @@ import type { PublishProvider } from "@/adapters/publishing/types";
 import { enqueueSubmission } from "@/lib/queue/queues";
 import { transition } from "@/lib/db/guardedTransition";
 import { computeCapabilities } from "./capabilityService";
+import { latestApprovedReview, reviewCoversCurrentFindings } from "./prePublicationService";
 import type { Platform, PublicationMode } from "@/generated/prisma";
 
 const PROVIDERS: Record<Platform, PublishProvider> = {
@@ -61,18 +62,27 @@ export async function publishClip(req: PublishRequest): Promise<{ publicationId:
     where: { platform: req.platform, active: true },
   });
 
+  // An audited operator override (approved pre-publication review) can waive
+  // REVIEW findings so AUTO may proceed. FAIL and safety-critical REVIEWs are
+  // never waivable — reviewCoversCurrentFindings enforces that.
+  const findings = rendered.compliance.map((c) => ({ check: c.check, outcome: c.outcome }));
+  const approvedReview = gate.hasReview ? await latestApprovedReview(req.renderedClipId, req.platform) : null;
+  const reviewWaivesReview = reviewCoversCurrentFindings(approvedReview, findings);
+  const effectiveComplianceOutcome: "PASS" | "REVIEW" = gate.hasReview && !reviewWaivesReview ? "REVIEW" : "PASS";
+
   // Platform capability gating: never AUTO-publish when the provider/app cannot
   // actually perform a public post (unaudited app, unverified project, etc.).
   const capability = computeCapabilities({
     platform: req.platform,
     accountConnected: !!account,
     requiresInAppAudioOrEffects: requiresInApp,
-    complianceOutcome: gate.hasReview ? "REVIEW" : "PASS",
+    complianceOutcome: effectiveComplianceOutcome,
   });
   if (mode === "AUTO" && capability.maxMode !== "AUTO") {
     mode = "DRAFT";
     downgradeReasons.push(...capability.reasons);
   }
+  const overrideId = reviewWaivesReview && approvedReview ? approvedReview.id : null;
   const accessToken = account ? (await getAccessToken(account.id)) ?? undefined : undefined;
 
   const idempotencyKey = `${mode}`;
@@ -154,7 +164,7 @@ export async function publishClip(req: PublishRequest): Promise<{ publicationId:
       action: "clip.published",
       entityType: "Publication",
       entityId: publication.id,
-      metadata: { platform: req.platform, mode, status: result.status, downgradeReasons, note: result.note },
+      metadata: { platform: req.platform, mode, status: result.status, downgradeReasons, overrideId, note: result.note },
     });
 
     await enqueueSubmission(publication.id);
