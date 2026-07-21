@@ -45,3 +45,27 @@ export function ReparseButton({ campaignId }: { campaignId: string }) {
     </span>
   );
 }
+
+export function DownloadResourcesButton({ campaignId }: { campaignId: string }) {
+  const { run, pending, msg } = useAction(`/api/campaigns/${campaignId}/download`);
+  return (
+    <span>
+      <button className="btn secondary" onClick={run} disabled={pending}>
+        {pending ? "Queuing…" : "Download resources"}
+      </button>
+      {msg && <span className="badge bad" style={{ marginLeft: 8 }}>{msg}</span>}
+    </span>
+  );
+}
+
+export function GenerateClipsButton({ assetId }: { assetId: string }) {
+  const { run, pending, msg } = useAction(`/api/assets/${assetId}/generate-clips`);
+  return (
+    <span>
+      <button className="btn secondary" onClick={run} disabled={pending}>
+        {pending ? "Queuing…" : "Generate clips"}
+      </button>
+      {msg && <span className="badge bad" style={{ marginLeft: 8 }}>{msg}</span>}
+    </span>
+  );
+}

@@ -5,10 +5,12 @@ validated structured data, download permitted resources, generate compliant
 short-form video drafts, publish/prepare them, and track post URLs and
 campaign submissions.
 
-> **Status: Phase 1** — campaign discovery, parsing, database and dashboard are
-> implemented. Interfaces and DB persistence for Phases 2–5 (ingestion, video
-> pipeline, compliance, publishing, submission) are scaffolded so later phases
-> drop in without re-architecting. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+> **Status: Phases 1–2** — campaign discovery, parsing, database, dashboard
+> (Phase 1) plus resource ingestion, transcription and clip-candidate
+> generation (Phase 2) are implemented. Interfaces and DB persistence for
+> Phases 3–5 (rendering, compliance, publishing, submission) are scaffolded so
+> later phases drop in without re-architecting. See
+> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Stack
 
@@ -27,7 +29,12 @@ npx prisma generate
 npx prisma migrate dev --name init
 npm run dev                     # dashboard at http://localhost:3000
 npm run worker:discovery        # discovery + parse workers (separate terminal)
+npm run worker:pipeline         # ingest + transcribe + clip workers (Phase 2)
 ```
+
+FFmpeg is required for real transcription/scene-detection; when it (or a live
+ASR backend) is absent, the pipeline falls back to deterministic sandbox
+transcripts and heuristic scene windows so it still runs end to end.
 
 Without an `ANTHROPIC_API_KEY` / `WHOP_API_KEY`, the corresponding adapters run
 in **sandbox mode** — real interfaces and DB persistence, safe fallbacks for the
@@ -39,6 +46,7 @@ external call.
 | --- | --- |
 | `npm run dev` | Next.js dashboard |
 | `npm run worker:discovery` | Discovery + parse BullMQ workers |
+| `npm run worker:pipeline` | Ingest + transcribe + clip BullMQ workers |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
 | `npm run test` | Vitest |
@@ -62,6 +70,25 @@ external call.
   jobs/errors, plus scaffolded pages for later phases.
 - **Security** — SSRF-guarded URL validation, download host allowlist + size
   caps, AES-256-GCM secret encryption, log redaction, RBAC, audit log.
+
+## What's implemented (Phase 2)
+
+- **Resource ingestion** — resolves Google Drive / Dropbox share links to
+  direct downloads, streams **permitted** resources into R2 (local sandbox
+  fallback) with SSRF guard, content-type allowlist, max-size cap and a rolling
+  SHA-256 checksum; persists `SourceAsset` idempotently on
+  `(campaignId, checksum)`, preserving original source and download timestamp.
+  Unapproved sources are never downloaded; folders and YouTube are flagged as
+  needing a provider API / extractor rather than faked.
+- **Transcription** — ffprobe duration + a pluggable `Transcriber` (sandbox
+  backend included) producing a Zod-validated timestamped transcript.
+- **Clip candidates** — ffmpeg scene detection → duration-constrained,
+  scene-aligned candidate ranges → Claude scoring (hook / clarity / emotional
+  intensity / campaign relevance / standalone value, re-validated with Zod) →
+  rejection of duration/source violations and below-bar clips → persisted
+  `ClipCandidate`s.
+- **Dashboard** — real Source assets and Clip candidates pages, plus
+  "Download resources" and "Generate clips" actions (RBAC-gated).
 
 ## Testing
 

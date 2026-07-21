@@ -7,8 +7,18 @@ them, and tracks the resulting post URLs and campaign submissions.
 
 This document describes the system as designed across all five delivery
 phases. The repository currently implements **Phase 1** (discovery, parsing,
-database, dashboard) with complete interfaces and DB persistence for later
+database, dashboard) and **Phase 2** (resource ingestion, transcription, clip
+candidate generation), with complete interfaces and DB persistence for later
 phases so nothing has to be re-architected as they land.
+
+**Phase 2 flow:** discovery → parse → (operator approves resources) → `ingest`
+downloads permitted resources into R2/local as `SourceAsset`s (SSRF-guarded,
+size/type-capped, checksummed) → `transcribe` probes duration and produces a
+timestamped transcript → `clip` runs scene detection, builds
+duration-constrained candidate ranges, scores each with Claude
+(hook/clarity/emotion/relevance/standalone) and persists `ClipCandidate`s,
+rejecting anything that violates duration or source rules or scores below the
+acceptance bar. Every stage is wrapped in an idempotent `JobRun`.
 
 ---
 

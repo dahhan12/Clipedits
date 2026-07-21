@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
-import { ReparseButton } from "@/components/ActionButtons";
+import { ReparseButton, DownloadResourcesButton } from "@/components/ActionButtons";
 import { CampaignRulesSchema } from "@/lib/schemas/campaign";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +32,10 @@ export default async function CampaignDetailPage({
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h2>{campaign.title ?? campaign.externalId}</h2>
-        <ReparseButton campaignId={campaign.id} />
+        <span style={{ display: "flex", gap: 8 }}>
+          <DownloadResourcesButton campaignId={campaign.id} />
+          <ReparseButton campaignId={campaign.id} />
+        </span>
       </div>
       <p className="muted">
         <a href={campaign.sourceUrl} target="_blank" rel="noreferrer">
