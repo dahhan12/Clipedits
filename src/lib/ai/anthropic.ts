@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { env, isSandbox } from "@/lib/config/env";
 import { logger } from "@/lib/logging/logger";
 import { recordProviderCall } from "@/lib/observability/providerMetrics";
+import { recordUsage } from "@/services/ops/costService";
 
 /**
  * Thin wrapper around the Anthropic SDK that:
@@ -62,6 +63,7 @@ export async function extractStructured<T>(opts: ExtractOptions<T>): Promise<unk
     }),
   );
 
+  void recordUsage({ kind: "ai" });
   const toolUse = resp.content.find(
     (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
   );
@@ -109,6 +111,7 @@ export async function extractTextFromMedia(input: {
     }),
   );
 
+  void recordUsage({ kind: "ai" });
   return resp.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)

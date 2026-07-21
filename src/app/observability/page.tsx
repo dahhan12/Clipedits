@@ -1,17 +1,25 @@
+import { headers } from "next/headers";
 import { getQueueDepths, getJobRunStats, getPipelineFunnel } from "@/lib/observability/metrics";
 import { listDeadLetters } from "@/services/ops/replayService";
 import { getProviderMetrics } from "@/lib/observability/providerMetrics";
+import { getKillSwitchState } from "@/services/ops/killSwitch";
+import { getUsageSummary } from "@/services/ops/costService";
+import { currentRole } from "@/lib/security/rbac";
 import { ReplayButton } from "@/components/ReplayButton";
+import { KillSwitchControls } from "@/components/KillSwitchControls";
 
 export const dynamic = "force-dynamic";
 
 export default async function ObservabilityPage() {
-  const [depths, jobStats, funnel, deadLetters, providers] = await Promise.all([
+  const isAdmin = currentRole(await headers()) === "ADMIN";
+  const [depths, jobStats, funnel, deadLetters, providers, killSwitches, usage] = await Promise.all([
     getQueueDepths(),
     getJobRunStats(),
     getPipelineFunnel(),
     listDeadLetters(50),
     getProviderMetrics(7),
+    getKillSwitchState(),
+    getUsageSummary(7),
   ]);
 
   const funnelRows: Array<[string, number]> = [
@@ -40,6 +48,47 @@ export default async function ObservabilityPage() {
             <div className="l">{label}</div>
           </div>
         ))}
+      </div>
+
+      {isAdmin && <KillSwitchControls initial={killSwitches} />}
+
+      <div className="card">
+        <h3>Estimated spend (7d)</h3>
+        <p className="muted">
+          Coarse per-operation estimates (AI, render, publish) per workspace/day — for
+          dashboards and soft caps, not billing.{" "}
+          {killSwitches.globalDailyCapUsd != null && (
+            <>Global daily cap: <strong>${killSwitches.globalDailyCapUsd.toFixed(2)}</strong>.</>
+          )}
+        </p>
+        {usage.length === 0 ? (
+          <p className="muted">No usage recorded yet.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Workspace</th>
+                <th>Day</th>
+                <th>AI calls</th>
+                <th>Render s</th>
+                <th>Publishes</th>
+                <th>Est. cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {usage.map((u) => (
+                <tr key={`${u.workspaceId}-${u.day.toISOString()}`}>
+                  <td className="muted">{u.workspaceId === "__shared__" ? "shared pool" : u.workspaceId}</td>
+                  <td className="muted">{new Date(u.day).toISOString().slice(0, 10)}</td>
+                  <td>{u.aiCalls}</td>
+                  <td>{u.renderSeconds.toFixed(0)}</td>
+                  <td>{u.publishCount}</td>
+                  <td>${u.costUsd.toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       <div className="card">

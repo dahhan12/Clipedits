@@ -10,6 +10,8 @@ import { objectStore, ensureLocalFile } from "@/adapters/storage/objectStore";
 import { sha256Hex } from "@/lib/security/crypto";
 import { transition } from "@/lib/db/guardedTransition";
 import { assertRenderPermitted } from "@/services/rights/permissionService";
+import { isHalted } from "@/services/ops/killSwitch";
+import { getBudgetStatus, recordUsage } from "@/services/ops/costService";
 import { probeVideoMeta, extractThumbnail, validateMedia, FfmpegUnavailable } from "@/lib/media/ffmpeg";
 import { computePerceptualHash, computeAudioHash } from "@/lib/media/perceptualHash";
 import { FfmpegRenderer } from "@/lib/media/render/ffmpegRenderer";
@@ -47,6 +49,23 @@ export async function renderCandidate(candidateId: string): Promise<{ renderedCl
   const rules = await latestRules(asset.campaignId);
   if (!rules) {
     throw new Error("Cannot render: campaign has no parsed rules");
+  }
+
+  // Global kill switch + spend cap: stop before spending CPU/ffmpeg time when
+  // rendering is halted or the daily cost cap for this workspace is reached.
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: asset.campaignId },
+    select: { workspaceId: true },
+  });
+  const workspaceId = campaign?.workspaceId ?? null;
+  if (await isHalted("rendering")) {
+    logger.warn({ candidateId }, "render skipped: rendering halted by kill switch");
+    return null;
+  }
+  const budget = await getBudgetStatus(workspaceId);
+  if (!budget.allowed) {
+    logger.warn({ candidateId, reason: budget.reason }, "render skipped: budget cap reached");
+    return null;
   }
 
   // Rights gate: never render an asset we are not permitted to download/clip/
@@ -207,6 +226,12 @@ export async function renderCandidate(candidateId: string): Promise<{ renderedCl
     metadata: { candidateId, backend: backendUsed, width, height },
   });
   await enqueueCompliance(rendered.id);
+  // Cost accounting: attribute the rendered seconds to the campaign's workspace.
+  await recordUsage({
+    workspaceId,
+    kind: "render",
+    units: meta?.durationSec ?? candidate.endSec - candidate.startSec,
+  });
 
   logger.info({ candidateId, renderedClipId: rendered.id, backend: backendUsed }, "Clip rendered");
   return { renderedClipId: rendered.id };

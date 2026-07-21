@@ -13,6 +13,9 @@ import { enqueueSubmission } from "@/lib/queue/queues";
 import { transition } from "@/lib/db/guardedTransition";
 import { computeCapabilities } from "./capabilityService";
 import { latestApprovedReview, reviewCoversCurrentFindings } from "./prePublicationService";
+import { isHalted } from "@/services/ops/killSwitch";
+import { getBudgetStatus, recordUsage } from "@/services/ops/costService";
+import { applyCampaignStopConditions } from "@/services/ops/campaignStopConditions";
 import type { Platform, PublicationMode } from "@/generated/prisma";
 
 const PROVIDERS: Record<Platform, PublishProvider> = {
@@ -45,6 +48,14 @@ export async function publishClip(req: PublishRequest): Promise<{ publicationId:
     include: { compliance: true, candidate: { include: { sourceAsset: { include: { campaign: true } } } } },
   });
   if (!rendered?.storageKey) throw new Error("Rendered clip not found or missing storage key");
+
+  const campaign = rendered.candidate.sourceAsset.campaign;
+
+  // Global kill switch + spend cap: refuse (never fabricate a post) before any
+  // provider call when publishing is halted or the daily cost cap is reached.
+  if (await isHalted("publishing")) return skip(req, "Blocked: publishing halted by kill switch");
+  const budget = await getBudgetStatus(campaign.workspaceId);
+  if (!budget.allowed) return skip(req, `Blocked: ${budget.reason}`);
 
   const gate = complianceGate(rendered.compliance);
   const manifest = RenderManifestSchema.safeParse(rendered.renderManifest);
@@ -168,6 +179,11 @@ export async function publishClip(req: PublishRequest): Promise<{ publicationId:
     });
 
     await enqueueSubmission(publication.id);
+    // Cost accounting + campaign stop conditions (best-effort; never fail the
+    // publish on these). Pause the campaign if it has now hit its post cap /
+    // budget / deadline so the pipeline stops producing for it.
+    await recordUsage({ workspaceId: campaign.workspaceId, kind: "publish" });
+    await applyCampaignStopConditions(campaign.id);
     logger.info({ publicationId: publication.id, status: result.status, mode }, "Publish complete");
     return { publicationId: publication.id, status: result.status };
   } catch (err) {

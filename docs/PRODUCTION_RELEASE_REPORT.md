@@ -42,8 +42,9 @@ P1-10 envelope, and P1-9 failure-classifier suites.)
 (earlier), `multitenant_workspace`, `dead_letter_and_provider_stats` (P1-9
 advanced: `DEAD_LETTER` job status, `JobRun.failureCategory`/`deadLetteredAt`/
 `updatedAt`, `ProviderStat` table), `prepublication_review` (P2-15:
-`PrePublicationReview` table + `ReviewDecision` enum), plus the pre-existing
-phase migrations. All
+`PrePublicationReview` table + `ReviewDecision` enum), `cost_controls_kill_switches`
+(P2-14: `SystemSetting` + `UsageCounter` tables, `Workspace.dailyCostCapUsd`),
+plus the pre-existing phase migrations. All
 are recorded in `prisma/migrations`; `prisma migrate status` reports the DB in
 sync. Apply in production with `prisma migrate deploy`.
 
@@ -100,8 +101,19 @@ path. Everything third-party is `IMPLEMENTED_NOT_VERIFIED`, `SANDBOX_VERIFIED`,
   REVIEWs. Route `/api/clips/[id]/review` (RBAC `publish.now`, CSRF) + an
   operator panel on the clip page. Unit (`prePublicationReview.test.ts`) +
   integration (`prePublicationReview.itest.ts`).
-- **P2-14, P2-16** — cost/capacity controls & kill switches, disaster-recovery
-  validation & runbooks.
+- **P2-14 (done)** — cost controls, spend caps & kill switches: `SystemSetting`
+  (runtime flags) + `UsageCounter` (per-workspace/day estimated cost + counts);
+  `killSwitch.ts` (global publishing/rendering/ai halt + global daily cap,
+  admin-toggleable, read-through cached, fail-open); `costService.ts` (per-op
+  estimates, `recordUsage`, `assertWithinBudget`/`getBudgetStatus` with the
+  stricter of workspace/global daily cap); enforced in `publishClip` (SKIP when
+  halted / over cap) and `renderCandidate` (no-op when halted / over cap); AI +
+  render + publish usage recorded. Campaign stop conditions
+  (`campaignStopConditions.ts`) auto-PAUSE a campaign on post-cap / budget /
+  deadline after each publish. Admin controls route `/api/ops/killswitch` +
+  dashboard controls & spend table. Unit (`costControls.test.ts`) + integration
+  (`costControls.itest.ts`: kill-switch skip, cap enforcement, auto-pause).
+- **P2-16** — disaster-recovery validation & runbooks.
 - **P0 follow-ups:** queue payloads don't yet carry workspaceId for worker
   re-verification (mitigated: enqueue routes are ownership-checked); rate limiting
   has a coarse per-instance edge layer in addition to the authoritative Redis one.

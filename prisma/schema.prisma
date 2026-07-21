@@ -162,6 +162,8 @@ model Workspace {
   id        String   @id @default(cuid())
   name      String
   createdAt DateTime @default(now())
+  // Per-workspace spend caps (USD). null = fall back to the global cap only.
+  dailyCostCapUsd Float?
 
   users User[]
 }
@@ -594,6 +596,34 @@ model ProviderStat {
 
   @@unique([provider, operation, day])
   @@index([provider])
+}
+
+/// Runtime configuration flags (kill switches, global caps) toggleable by an
+/// admin without a redeploy. `value` is JSON-encoded. Read-through cached at the
+/// service layer with a short TTL.
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+}
+
+/// Aggregated resource usage + estimated cost, one row per (workspace, day).
+/// Shared-pool work uses the SHARED_WORKSPACE sentinel so the unique key stays
+/// non-null. Estimated cost is exactly that — an estimate, never a billing figure.
+model UsageCounter {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  day           DateTime @db.Date
+  aiCalls       Int      @default(0)
+  renderSeconds Float    @default(0)
+  transcribeSeconds Float @default(0)
+  publishCount  Int      @default(0)
+  costUsd       Float    @default(0)
+  updatedAt     DateTime @updatedAt
+
+  @@unique([workspaceId, day])
+  @@index([day])
 }
 
 model AuditEvent {
