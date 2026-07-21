@@ -23,9 +23,20 @@ export async function parseAndPersist(campaignId: string): Promise<void> {
 
   await prisma.campaign.update({ where: { id: campaignId }, data: { status: "PARSING" } });
 
+  // Manual text entries store the pasted text on the latest revision snapshot;
+  // use it directly instead of fetching a page.
+  const snapshotRevision =
+    campaign.source === "MANUAL"
+      ? await prisma.campaignRevision.findFirst({
+          where: { campaignId, rawSnapshot: { not: null } },
+          orderBy: { capturedAt: "desc" },
+        })
+      : null;
+
   const { rules } = await parseCampaign({
     campaignId: campaign.externalId,
     sourceUrl: campaign.sourceUrl,
+    pageTextOverride: snapshotRevision?.rawSnapshot ?? undefined,
   });
 
   const ruleStatus = deriveRuleStatus(rules);

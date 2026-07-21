@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { ManualCampaignForm } from "@/components/ManualCampaignForm";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,10 @@ export default async function CampaignsPage() {
 
   return (
     <div>
-      <h2>New campaigns</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h2>New campaigns</h2>
+        <ManualCampaignForm />
+      </div>
       {campaigns.length === 0 ? (
         <div className="card">
           <p className="muted">

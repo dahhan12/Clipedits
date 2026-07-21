@@ -1,0 +1,77 @@
+import { prisma } from "@/lib/db/prisma";
+import { audit } from "@/lib/db/audit";
+import { logger } from "@/lib/logging/logger";
+import { assertSafeUrl } from "@/lib/security/url";
+import { sha256Hex } from "@/lib/security/crypto";
+import { enqueueParse } from "@/lib/queue/queues";
+
+/**
+ * Manual campaign entry. The user can paste a campaign URL or paste raw campaign
+ * text; either creates a `MANUAL`-source Campaign and enqueues parsing. Pasted
+ * text is stored as the revision snapshot so the parser uses it directly
+ * instead of fetching a page.
+ */
+
+function externalIdFromUrl(url: string): string {
+  const m = url.match(/\/discover\/([A-Za-z0-9_-]+)/);
+  return m?.[1] ?? `url-${sha256Hex(url).slice(0, 16)}`;
+}
+
+/** Create a manual campaign from a pasted campaign URL and enqueue parsing. */
+export async function createFromUrl(rawUrl: string): Promise<{ campaignId: string }> {
+  const url = await assertSafeUrl(rawUrl);
+  const externalId = externalIdFromUrl(url.toString());
+  const pageHash = sha256Hex(`manual-url:${url.toString()}`);
+
+  const campaign = await prisma.campaign.upsert({
+    where: { source_externalId: { source: "MANUAL", externalId } },
+    create: { source: "MANUAL", externalId, sourceUrl: url.toString(), lastPageHash: pageHash, status: "DISCOVERED" },
+    update: { sourceUrl: url.toString() },
+  });
+
+  await prisma.campaignRevision.upsert({
+    where: { campaignId_pageHash: { campaignId: campaign.id, pageHash } },
+    create: { campaignId: campaign.id, pageHash },
+    update: {},
+  });
+
+  await audit({ action: "campaign.manual.url", entityType: "Campaign", entityId: campaign.id, metadata: { url: url.toString() } });
+  await enqueueParse(campaign.id);
+  logger.info({ campaignId: campaign.id }, "Manual campaign created from URL");
+  return { campaignId: campaign.id };
+}
+
+/**
+ * Create a manual campaign from pasted campaign text (and optional title/URL).
+ * The text is stored as the revision snapshot and parsed directly.
+ */
+export async function createFromText(input: {
+  text: string;
+  title?: string;
+  sourceUrl?: string;
+}): Promise<{ campaignId: string }> {
+  const text = input.text.trim();
+  if (text.length < 20) throw new Error("Campaign text is too short to parse");
+
+  const externalId = `text-${sha256Hex(text).slice(0, 16)}`;
+  const pageHash = sha256Hex(`manual-text:${externalId}`);
+  const sourceUrl = input.sourceUrl && input.sourceUrl.length > 0 ? input.sourceUrl : `manual://${externalId}`;
+
+  const campaign = await prisma.campaign.upsert({
+    where: { source_externalId: { source: "MANUAL", externalId } },
+    create: { source: "MANUAL", externalId, title: input.title, sourceUrl, lastPageHash: pageHash, status: "DISCOVERED" },
+    update: { title: input.title, sourceUrl },
+  });
+
+  // Store the pasted text as the snapshot the parser will consume.
+  await prisma.campaignRevision.upsert({
+    where: { campaignId_pageHash: { campaignId: campaign.id, pageHash } },
+    create: { campaignId: campaign.id, pageHash, rawSnapshot: text.slice(0, 30_000) },
+    update: { rawSnapshot: text.slice(0, 30_000) },
+  });
+
+  await audit({ action: "campaign.manual.text", entityType: "Campaign", entityId: campaign.id, metadata: { chars: text.length } });
+  await enqueueParse(campaign.id);
+  logger.info({ campaignId: campaign.id }, "Manual campaign created from text");
+  return { campaignId: campaign.id };
+}

@@ -7,7 +7,9 @@ import type { Role } from "@/generated/prisma";
  */
 
 export type Action =
+  | "campaign.create"
   | "campaign.reparse"
+  | "rule.review"
   | "resource.download"
   | "clip.generate"
   | "clip.approve"
@@ -20,7 +22,9 @@ export type Action =
 const POLICY: Record<Role, Action[] | "*"> = {
   ADMIN: "*",
   OPERATOR: [
+    "campaign.create",
     "campaign.reparse",
+    "rule.review",
     "resource.download",
     "clip.generate",
     "clip.approve",

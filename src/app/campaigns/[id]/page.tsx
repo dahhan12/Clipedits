@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { ReparseButton, DownloadResourcesButton } from "@/components/ActionButtons";
+import { RuleEditor } from "@/components/RuleEditor";
 import { CampaignRulesSchema } from "@/lib/schemas/campaign";
 
 export const dynamic = "force-dynamic";
@@ -51,8 +52,15 @@ export default async function CampaignDetailPage({
       ) : (
         <>
           <div className="card">
-            <h3>Rules {latestRule && <span className="muted">· confidence {rules.confidence.toFixed(2)}</span>}</h3>
-            <table>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h3 style={{ margin: 0 }}>
+                Rules {latestRule && <span className="muted">· confidence {rules.confidence.toFixed(2)}</span>}
+              </h3>
+              <a className="btn secondary" href={`/campaigns/${campaign.id}/revisions`}>
+                Revisions
+              </a>
+            </div>
+            <table style={{ marginTop: 10 }}>
               <tbody>
                 <Row k="Status" v={rules.status} />
                 <Row k="Budget (total / remaining)" v={`${rules.budgetTotal ?? "—"} / ${rules.budgetRemaining ?? "—"}`} />
@@ -76,6 +84,7 @@ export default async function CampaignDetailPage({
                 <Row k="Submission" v={rules.submissionInstructions} />
               </tbody>
             </table>
+            <RuleEditor campaignId={campaign.id} initialRules={rules} />
           </div>
 
           {rules.uncertainties.length > 0 && (

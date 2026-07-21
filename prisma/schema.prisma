@@ -20,6 +20,7 @@ datasource db {
 enum CampaignSource {
   CONTENT_REWARDS
   WHOP_FORUM
+  MANUAL
 }
 
 enum CampaignStatus {

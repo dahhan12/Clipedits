@@ -31,9 +31,16 @@ export interface ParsedCampaign {
 export async function parseCampaign(input: {
   campaignId: string;
   sourceUrl: string;
+  /** When provided (e.g. manual paste), use this text instead of fetching. */
+  pageTextOverride?: string;
 }): Promise<ParsedCampaign> {
-  await assertSafeUrl(input.sourceUrl);
-  const pageText = await capturePageText(input.sourceUrl);
+  let pageText: string;
+  if (input.pageTextOverride && input.pageTextOverride.trim().length > 0) {
+    pageText = input.pageTextOverride.slice(0, 30_000);
+  } else {
+    await assertSafeUrl(input.sourceUrl);
+    pageText = await capturePageText(input.sourceUrl);
+  }
 
   const raw = await extractStructured<CampaignRules>({
     system: SYSTEM_PROMPT,
