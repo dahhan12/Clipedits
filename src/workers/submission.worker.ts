@@ -2,6 +2,7 @@ import { Worker } from "bullmq";
 import { redisConnection } from "@/lib/queue/connection";
 import { QUEUE_NAMES } from "@/lib/queue/queues";
 import { withJobRun } from "./jobRun";
+import { registerGracefulShutdown } from "./shutdown";
 import { prepareSubmission } from "@/services/submission/submissionService";
 import { trackSubmission } from "@/services/submission/trackingService";
 import { syncMetrics } from "@/services/submission/metricsService";
@@ -61,3 +62,5 @@ for (const [name, w] of [
 }
 
 logger.info("Submission + tracking workers started");
+
+registerGracefulShutdown([submitWorker, trackWorker, metricsWorker, earningsWorker]);

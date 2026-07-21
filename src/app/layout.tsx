@@ -23,6 +23,7 @@ const NAV: Array<{ href: string; label: string }> = [
   { href: "/submissions", label: "Submissions" },
   { href: "/earnings", label: "Earnings" },
   { href: "/jobs", label: "Errors & jobs" },
+  { href: "/observability", label: "Observability" },
   { href: "/providers", label: "Provider readiness" },
 ];
 

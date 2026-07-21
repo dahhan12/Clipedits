@@ -6,6 +6,7 @@ import { WhopForumAdapter } from "@/adapters/discovery/whopForum";
 import { runDiscovery } from "@/services/discovery/discoveryService";
 import { parseAndPersist } from "@/services/parsing/parseService";
 import { withJobRun } from "./jobRun";
+import { registerGracefulShutdown } from "./shutdown";
 import { logger } from "@/lib/logging/logger";
 import { validateDeploymentEnv } from "@/lib/config/deployEnv";
 
@@ -48,3 +49,5 @@ for (const [name, w] of [
 }
 
 logger.info("Discovery + parse workers started");
+
+registerGracefulShutdown([discoveryWorker, parseWorker]);

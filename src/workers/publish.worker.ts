@@ -2,6 +2,7 @@ import { Worker } from "bullmq";
 import { redisConnection } from "@/lib/queue/connection";
 import { QUEUE_NAMES } from "@/lib/queue/queues";
 import { withJobRun } from "./jobRun";
+import { registerGracefulShutdown } from "./shutdown";
 import { publishClip } from "@/services/publishing/publishService";
 import { logger } from "@/lib/logging/logger";
 import type { Platform, PublicationMode } from "@/generated/prisma";
@@ -34,3 +35,5 @@ publishWorker.on("completed", (job) => logger.info({ jobId: job.id }, "publish j
 publishWorker.on("failed", (job, err) => logger.error({ jobId: job?.id, err }, "publish job failed"));
 
 logger.info("Publish worker started");
+
+registerGracefulShutdown([publishWorker]);

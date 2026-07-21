@@ -2,6 +2,7 @@ import { Worker } from "bullmq";
 import { redisConnection } from "@/lib/queue/connection";
 import { QUEUE_NAMES } from "@/lib/queue/queues";
 import { withJobRun } from "./jobRun";
+import { registerGracefulShutdown } from "./shutdown";
 import { renderCandidate } from "@/services/render/renderService";
 import { evaluateCompliance } from "@/services/compliance/complianceService";
 import { logger } from "@/lib/logging/logger";
@@ -47,3 +48,5 @@ for (const [name, w] of [
 }
 
 logger.info("Render + compliance workers started");
+
+registerGracefulShutdown([renderWorker, complianceWorker]);

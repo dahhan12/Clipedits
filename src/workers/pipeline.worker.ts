@@ -2,6 +2,7 @@ import { Worker } from "bullmq";
 import { redisConnection } from "@/lib/queue/connection";
 import { QUEUE_NAMES } from "@/lib/queue/queues";
 import { withJobRun } from "./jobRun";
+import { registerGracefulShutdown } from "./shutdown";
 import { ingestCampaignResources } from "@/services/ingestion/downloadService";
 import { transcribeAsset } from "@/services/pipeline/transcribeService";
 import { generateClipCandidates } from "@/services/pipeline/clipCandidateService";
@@ -59,3 +60,5 @@ for (const [name, w] of [
 }
 
 logger.info("Pipeline workers (ingest, transcribe, clip) started");
+
+registerGracefulShutdown([ingestWorker, transcribeWorker, clipWorker]);
