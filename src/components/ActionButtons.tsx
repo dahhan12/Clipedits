@@ -69,3 +69,39 @@ export function GenerateClipsButton({ assetId }: { assetId: string }) {
     </span>
   );
 }
+
+export function ApproveButton({ candidateId }: { candidateId: string }) {
+  const { run, pending, msg } = useAction(`/api/candidates/${candidateId}/approve`);
+  return (
+    <span>
+      <button className="btn" onClick={run} disabled={pending}>
+        {pending ? "…" : "Approve"}
+      </button>
+      {msg && <span className="badge bad" style={{ marginLeft: 6 }}>{msg}</span>}
+    </span>
+  );
+}
+
+export function RejectButton({ candidateId }: { candidateId: string }) {
+  const { run, pending, msg } = useAction(`/api/candidates/${candidateId}/reject`);
+  return (
+    <span>
+      <button className="btn secondary" onClick={run} disabled={pending}>
+        {pending ? "…" : "Reject"}
+      </button>
+      {msg && <span className="badge bad" style={{ marginLeft: 6 }}>{msg}</span>}
+    </span>
+  );
+}
+
+export function RegenerateButton({ candidateId }: { candidateId: string }) {
+  const { run, pending, msg } = useAction(`/api/candidates/${candidateId}/regenerate`);
+  return (
+    <span>
+      <button className="btn secondary" onClick={run} disabled={pending}>
+        {pending ? "…" : "Regenerate"}
+      </button>
+      {msg && <span className="badge bad" style={{ marginLeft: 6 }}>{msg}</span>}
+    </span>
+  );
+}

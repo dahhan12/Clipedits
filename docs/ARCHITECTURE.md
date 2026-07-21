@@ -7,9 +7,19 @@ them, and tracks the resulting post URLs and campaign submissions.
 
 This document describes the system as designed across all five delivery
 phases. The repository currently implements **Phase 1** (discovery, parsing,
-database, dashboard) and **Phase 2** (resource ingestion, transcription, clip
-candidate generation), with complete interfaces and DB persistence for later
-phases so nothing has to be re-architected as they land.
+database, dashboard), **Phase 2** (resource ingestion, transcription, clip
+candidate generation), and **Phase 3** (9:16 rendering with FFmpeg + Remotion
+and the deterministic compliance engine), with complete interfaces and DB
+persistence for later phases so nothing has to be re-architected as they land.
+
+**Phase 3 flow:** an operator approves a `ClipCandidate` → `render` produces a
+9:16 H.264/AAC MP4 (FFmpeg by default; Remotion composition backend optional,
+with FFmpeg fallback), applying captions/logos/mentions/overlays **only when
+the campaign requires or permits them**, generating per-platform caption text
+(mandatory tags appended deterministically), and persisting a full render
+manifest → `compliance` runs 15 deterministic validators plus a Claude semantic
+prohibited-content check, writing one `ComplianceResult` per check
+(PASS/FAIL/REVIEW + reason). Both stages are idempotent `JobRun`s.
 
 **Phase 2 flow:** discovery → parse → (operator approves resources) → `ingest`
 downloads permitted resources into R2/local as `SourceAsset`s (SSRF-guarded,

@@ -5,12 +5,12 @@ validated structured data, download permitted resources, generate compliant
 short-form video drafts, publish/prepare them, and track post URLs and
 campaign submissions.
 
-> **Status: Phases 1–2** — campaign discovery, parsing, database, dashboard
-> (Phase 1) plus resource ingestion, transcription and clip-candidate
-> generation (Phase 2) are implemented. Interfaces and DB persistence for
-> Phases 3–5 (rendering, compliance, publishing, submission) are scaffolded so
-> later phases drop in without re-architecting. See
-> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+> **Status: Phases 1–3** — discovery, parsing, database, dashboard (Phase 1);
+> resource ingestion, transcription and clip-candidate generation (Phase 2);
+> 9:16 rendering (FFmpeg + Remotion) and the deterministic compliance engine
+> (Phase 3). Interfaces and DB persistence for Phases 4–5 (publishing,
+> submission) are scaffolded so later phases drop in without re-architecting.
+> See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Stack
 
@@ -47,6 +47,7 @@ external call.
 | `npm run dev` | Next.js dashboard |
 | `npm run worker:discovery` | Discovery + parse BullMQ workers |
 | `npm run worker:pipeline` | Ingest + transcribe + clip BullMQ workers |
+| `npm run worker:render` | Render + compliance BullMQ workers (needs ffmpeg) |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
 | `npm run test` | Vitest |
@@ -89,6 +90,27 @@ external call.
   `ClipCandidate`s.
 - **Dashboard** — real Source assets and Clip candidates pages, plus
   "Download resources" and "Generate clips" actions (RBAC-gated).
+
+## What's implemented (Phase 3)
+
+- **Rendering** — approving a candidate renders a **9:16 H.264/AAC MP4** with
+  FFmpeg (trim → scale/crop → encode). Captions / logos / mentions / overlays
+  are applied **only when the campaign requires or permits them**. A real
+  Remotion composition (`src/remotion/`) is available as an overlay-compositing
+  backend (`RENDER_BACKEND=remotion`) with automatic FFmpeg fallback. Every
+  transformation and overlay is recorded in a Zod-validated **render manifest**.
+- **Platform captions** — per-platform caption text; a Claude-written hook line
+  with mandatory mentions/hashtags/required phrases appended **deterministically**
+  so required elements can never be dropped.
+- **Compliance engine** — 15 deterministic validators (duration, dimensions,
+  aspect ratio, file format, source eligibility, mandatory overlays / text /
+  mentions / hashtags, platform eligibility, deadline, max posts, duplicate
+  content, campaign status, remaining budget) plus a Claude **semantic**
+  prohibited-content check. Every check yields `PASS | FAIL | REVIEW` + reason;
+  unknowns are REVIEW, never a false PASS.
+- **Dashboard** — Approval queue (Approve / Reject / Regenerate), Compliance
+  results, and a Clip preview page with inline 9:16 video, manifest, captions
+  and per-check results.
 
 ## Testing
 

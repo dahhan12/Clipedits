@@ -43,6 +43,14 @@ const EnvSchema = z.object({
     .string()
     .default("2147483648")
     .transform((v) => Number.parseInt(v, 10)),
+
+  // --- Rendering ---
+  // "ffmpeg" (default, robust) or "remotion" (composited overlays via browser).
+  RENDER_BACKEND: z.enum(["ffmpeg", "remotion"]).default("ffmpeg"),
+  RENDER_WIDTH: z.string().default("1080").transform((v) => Number.parseInt(v, 10)),
+  RENDER_HEIGHT: z.string().default("1920").transform((v) => Number.parseInt(v, 10)),
+  // Optional chromium path for Remotion (Playwright's is pre-installed here).
+  REMOTION_BROWSER_EXECUTABLE: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

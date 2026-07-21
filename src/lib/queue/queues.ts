@@ -37,6 +37,8 @@ export const parseQueue = makeQueue(QUEUE_NAMES.parse);
 export const ingestQueue = makeQueue(QUEUE_NAMES.ingest);
 export const transcribeQueue = makeQueue(QUEUE_NAMES.transcribe);
 export const clipQueue = makeQueue(QUEUE_NAMES.clip);
+export const renderQueue = makeQueue(QUEUE_NAMES.render);
+export const complianceQueue = makeQueue(QUEUE_NAMES.compliance);
 
 /** Enqueue a parse job idempotently keyed on the campaign id. */
 export async function enqueueParse(campaignId: string): Promise<void> {
@@ -56,4 +58,14 @@ export async function enqueueTranscribe(assetId: string): Promise<void> {
 /** Enqueue clip-candidate generation for an asset, idempotent on the asset id. */
 export async function enqueueClip(assetId: string): Promise<void> {
   await clipQueue.add("clip-asset", { assetId }, { jobId: `clip:${assetId}` });
+}
+
+/** Enqueue rendering for an approved candidate, idempotent on the candidate id. */
+export async function enqueueRender(candidateId: string): Promise<void> {
+  await renderQueue.add("render-candidate", { candidateId }, { jobId: `render:${candidateId}` });
+}
+
+/** Enqueue compliance evaluation for a rendered clip, idempotent on its id. */
+export async function enqueueCompliance(renderedClipId: string): Promise<void> {
+  await complianceQueue.add("evaluate-compliance", { renderedClipId }, { jobId: `compliance:${renderedClipId}` });
 }

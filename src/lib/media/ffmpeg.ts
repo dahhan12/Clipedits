@@ -35,6 +35,43 @@ function run(bin: string, args: string[]): Promise<{ stdout: string; stderr: str
   });
 }
 
+export interface VideoMeta {
+  width: number | null;
+  height: number | null;
+  durationSec: number | null;
+  videoCodec: string | null;
+  audioCodec: string | null;
+  container: string | null;
+}
+
+/** Probe width/height/duration/codecs/container of a media file via ffprobe. */
+export async function probeVideoMeta(path: string): Promise<VideoMeta> {
+  const { stdout } = await run("ffprobe", [
+    "-v",
+    "error",
+    "-print_format",
+    "json",
+    "-show_format",
+    "-show_streams",
+    path,
+  ]);
+  const json = JSON.parse(stdout) as {
+    format?: { duration?: string; format_name?: string };
+    streams?: Array<{ codec_type?: string; codec_name?: string; width?: number; height?: number }>;
+  };
+  const v = json.streams?.find((s) => s.codec_type === "video");
+  const a = json.streams?.find((s) => s.codec_type === "audio");
+  const dur = json.format?.duration ? Number.parseFloat(json.format.duration) : null;
+  return {
+    width: v?.width ?? null,
+    height: v?.height ?? null,
+    durationSec: Number.isFinite(dur) ? dur : null,
+    videoCodec: v?.codec_name ?? null,
+    audioCodec: a?.codec_name ?? null,
+    container: json.format?.format_name ?? null,
+  };
+}
+
 /** Return media duration in seconds via ffprobe. */
 export async function probeDurationSec(path: string): Promise<number> {
   const { stdout } = await run("ffprobe", [
@@ -49,6 +86,65 @@ export async function probeDurationSec(path: string): Promise<number> {
   const dur = Number.parseFloat(stdout.trim());
   if (!Number.isFinite(dur)) throw new Error("Could not parse duration");
   return dur;
+}
+
+export interface RenderClipOptions {
+  inputPath: string;
+  outputPath: string;
+  startSec: number;
+  endSec: number;
+  width: number;
+  height: number;
+  /** Overlay text lines to burn in (already gated by permission/requirement). */
+  burnInText?: string[];
+}
+
+/**
+ * Render a 9:16 (or arbitrary WxH) clip from a source video with FFmpeg:
+ * trims [start,end], scales to cover and center-crops to the target frame, and
+ * encodes H.264 video + AAC audio into an MP4. Optional text is burned in with
+ * the drawtext filter (used as the FFmpeg overlay path / Remotion fallback).
+ */
+export async function renderClip9x16(opts: RenderClipOptions): Promise<void> {
+  const { width: w, height: h } = opts;
+  const filters = [
+    `scale=${w}:${h}:force_original_aspect_ratio=increase`,
+    `crop=${w}:${h}`,
+  ];
+  opts.burnInText?.forEach((line, i) => {
+    const safe = line.replace(/[\\:']/g, (c) => `\\${c}`).replace(/,/g, "\\,");
+    const y = `h-${(opts.burnInText!.length - i) * 90}`;
+    filters.push(
+      `drawtext=text='${safe}':fontcolor=white:fontsize=42:borderw=3:bordercolor=black@0.8:x=(w-text_w)/2:y=${y}`,
+    );
+  });
+
+  await run("ffmpeg", [
+    "-y",
+    "-ss",
+    opts.startSec.toFixed(3),
+    "-to",
+    opts.endSec.toFixed(3),
+    "-i",
+    opts.inputPath,
+    "-vf",
+    filters.join(","),
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-profile:v",
+    "high",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "128k",
+    "-movflags",
+    "+faststart",
+    opts.outputPath,
+  ]);
 }
 
 /**
