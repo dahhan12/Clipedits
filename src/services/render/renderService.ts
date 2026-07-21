@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { mkdtemp, stat } from "node:fs/promises";
+import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { prisma } from "@/lib/db/prisma";
@@ -10,7 +10,7 @@ import { objectStore, ensureLocalFile } from "@/adapters/storage/objectStore";
 import { sha256Hex } from "@/lib/security/crypto";
 import { transition } from "@/lib/db/guardedTransition";
 import { assertRenderPermitted } from "@/services/rights/permissionService";
-import { probeVideoMeta, extractThumbnail } from "@/lib/media/ffmpeg";
+import { probeVideoMeta, extractThumbnail, validateMedia, FfmpegUnavailable } from "@/lib/media/ffmpeg";
 import { FfmpegRenderer } from "@/lib/media/render/ffmpegRenderer";
 import { RemotionRenderer } from "@/lib/media/render/remotionRenderer";
 import type { OverlayRenderer } from "@/lib/media/render/types";
@@ -57,8 +57,14 @@ export async function renderCandidate(candidateId: string): Promise<{ renderedCl
   await transition.clipCandidate(candidateId, "RENDERING").catch(() => undefined);
 
   const inputPath = await ensureLocalFile(storageKey);
+  // Probe-before-process: reject corrupt/oversized/hostile media before ffmpeg.
+  await validateMedia(inputPath).catch((err) => {
+    if (err instanceof FfmpegUnavailable) return null; // sandbox without ffmpeg
+    throw err;
+  });
   const workDir = await mkdtemp(path.join(tmpdir(), "cc-render-"));
   const outputPath = path.join(workDir, `${candidateId}.mp4`);
+  try {
 
   const { overlays, overlaysApplied, logoText, requiresInAppAudioOrEffects } = buildOverlays(rules);
   const [w, h] = [env.RENDER_WIDTH, env.RENDER_HEIGHT];
@@ -194,6 +200,11 @@ export async function renderCandidate(candidateId: string): Promise<{ renderedCl
 
   logger.info({ candidateId, renderedClipId: rendered.id, backend: backendUsed }, "Clip rendered");
   return { renderedClipId: rendered.id };
+  } finally {
+    await rm(workDir, { recursive: true, force: true }).catch((err) =>
+      logger.warn({ err, candidateId }, "failed to clean render work dir"),
+    );
+  }
 }
 
 // --- helpers ---------------------------------------------------------------

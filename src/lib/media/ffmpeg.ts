@@ -8,30 +8,58 @@ import { spawn } from "node:child_process";
  */
 
 export class FfmpegUnavailable extends Error {}
+export class MediaTimeoutError extends Error {}
 
-function run(bin: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+// Default hard timeout for any ffmpeg/ffprobe invocation. Prevents a hostile or
+// malformed input from hanging a worker forever.
+const DEFAULT_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * Run a binary with NO shell (argv array only — no shell metacharacter risk), a
+ * hard timeout that SIGKILLs the process, and captured output. All args are
+ * constructed by callers as discrete strings; untrusted values are only ever
+ * file paths we created or numbers.
+ */
+function run(
+  bin: string,
+  args: string[],
+  opts: { timeoutMs?: number } = {},
+): Promise<{ stdout: string; stderr: string }> {
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   return new Promise((resolve, reject) => {
     let proc;
     try {
-      proc = spawn(bin, args);
+      proc = spawn(bin, args, { shell: false });
     } catch (err) {
       reject(new FfmpegUnavailable(`${bin} not spawnable: ${(err as Error).message}`));
       return;
     }
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    const timer = setTimeout(() => {
+      settled = true;
+      proc.kill("SIGKILL");
+      reject(new MediaTimeoutError(`${bin} exceeded ${timeoutMs}ms and was killed`));
+    }, timeoutMs);
     proc.stdout.on("data", (d) => (stdout += d.toString()));
     proc.stderr.on("data", (d) => (stderr += d.toString()));
-    proc.on("error", (err) =>
+    proc.on("error", (err) => {
+      if (settled) return;
+      clearTimeout(timer);
       reject(
         (err as NodeJS.ErrnoException).code === "ENOENT"
           ? new FfmpegUnavailable(`${bin} not found on PATH`)
           : err,
-      ),
-    );
-    proc.on("close", (code) =>
-      code === 0 ? resolve({ stdout, stderr }) : reject(new Error(`${bin} exited ${code}: ${stderr.slice(-500)}`)),
-    );
+      );
+    });
+    proc.on("close", (code) => {
+      if (settled) return;
+      clearTimeout(timer);
+      code === 0
+        ? resolve({ stdout, stderr })
+        : reject(new Error(`${bin} exited ${code}: ${stderr.slice(-500)}`));
+    });
   });
 }
 
@@ -68,6 +96,77 @@ export async function probeVideoMeta(path: string): Promise<VideoMeta> {
     durationSec: Number.isFinite(dur) ? dur : null,
     videoCodec: v?.codec_name ?? null,
     audioCodec: a?.codec_name ?? null,
+    container: json.format?.format_name ?? null,
+  };
+}
+
+export class MediaValidationError extends Error {}
+
+export interface MediaLimits {
+  maxDurationSec: number;
+  maxDimension: number;
+  maxStreams: number;
+  allowedVideoCodecs?: string[];
+}
+
+export const DEFAULT_MEDIA_LIMITS: MediaLimits = {
+  maxDurationSec: 60 * 60, // 1h
+  maxDimension: 4096,
+  maxStreams: 6,
+};
+
+/**
+ * Probe-before-process gate: treat all media as hostile. Rejects files that
+ * ffprobe cannot parse, that have no video stream, that exceed duration /
+ * dimension / stream-count caps (decompression-bomb / resource-exhaustion
+ * protection), or whose codec is not allowed. Never trusts extension or MIME.
+ */
+export async function validateMedia(path: string, limits: MediaLimits = DEFAULT_MEDIA_LIMITS): Promise<VideoMeta> {
+  let json: {
+    format?: { duration?: string; format_name?: string };
+    streams?: Array<{ codec_type?: string; codec_name?: string; width?: number; height?: number }>;
+  };
+  try {
+    const { stdout } = await run(
+      "ffprobe",
+      ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", path],
+      { timeoutMs: 30_000 },
+    );
+    json = JSON.parse(stdout);
+  } catch (err) {
+    if (err instanceof FfmpegUnavailable || err instanceof MediaTimeoutError) throw err;
+    throw new MediaValidationError(`Unparseable/corrupt media: ${(err as Error).message}`);
+  }
+
+  const streams = json.streams ?? [];
+  if (streams.length === 0) throw new MediaValidationError("No media streams found");
+  if (streams.length > limits.maxStreams) {
+    throw new MediaValidationError(`Too many streams (${streams.length} > ${limits.maxStreams})`);
+  }
+  const video = streams.find((s) => s.codec_type === "video");
+  if (!video) throw new MediaValidationError("No video stream present");
+
+  const w = video.width ?? 0;
+  const h = video.height ?? 0;
+  if (w > limits.maxDimension || h > limits.maxDimension) {
+    throw new MediaValidationError(`Dimensions ${w}x${h} exceed cap ${limits.maxDimension}`);
+  }
+
+  const dur = json.format?.duration ? Number.parseFloat(json.format.duration) : NaN;
+  if (Number.isFinite(dur) && dur > limits.maxDurationSec) {
+    throw new MediaValidationError(`Duration ${dur.toFixed(0)}s exceeds cap ${limits.maxDurationSec}s`);
+  }
+  if (limits.allowedVideoCodecs && video.codec_name && !limits.allowedVideoCodecs.includes(video.codec_name)) {
+    throw new MediaValidationError(`Video codec ${video.codec_name} not allowed`);
+  }
+
+  const audio = streams.find((s) => s.codec_type === "audio");
+  return {
+    width: video.width ?? null,
+    height: video.height ?? null,
+    durationSec: Number.isFinite(dur) ? dur : null,
+    videoCodec: video.codec_name ?? null,
+    audioCodec: audio?.codec_name ?? null, // missing audio is allowed
     container: json.format?.format_name ?? null,
   };
 }
