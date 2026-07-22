@@ -1,11 +1,17 @@
 import { isSandbox } from "@/lib/config/env";
+import type { VerificationRecord } from "@/lib/providers/verification";
 
 /**
- * Provider readiness registry. The `status` values mirror
+ * Provider readiness registry. The base `status` values mirror
  * docs/PRODUCTION_READINESS_AUDIT.md (the source of truth) and are intentionally
  * conservative. `credentialsPresent` is computed live from the environment so
  * the dashboard shows, honestly, whether a provider is even configured — and
  * never implies a capability the app cannot actually perform.
+ *
+ * A provider only advances to LIVE_VERIFIED when `npm run verify:live` has
+ * recorded a real passing smoke check (see verification.ts) — never on
+ * credential presence alone. Pass the stored records to `providerReadiness()`
+ * to reflect them; with no records the board shows the conservative base state.
  */
 
 export type ReadinessStatus =
@@ -25,9 +31,42 @@ export interface ProviderReadiness {
   credentialsPresent: boolean;
   requiresApproval?: boolean;
   note: string;
+  /** ISO timestamp of the last `verify:live` check for this provider, if any. */
+  lastVerifiedAt?: string;
 }
 
-export function providerReadiness(): ProviderReadiness[] {
+/**
+ * Apply stored verification records to the conservative base list. A positive
+ * record promotes the provider to LIVE_VERIFIED; a negative record leaves the
+ * base status (still unverified) but surfaces the failure detail and timestamp.
+ * Pure — no I/O — so it is fully unit-testable.
+ */
+export function applyVerifications(
+  base: ProviderReadiness[],
+  verifications: Record<string, VerificationRecord>,
+): ProviderReadiness[] {
+  return base.map((p) => {
+    const rec = verifications[p.key];
+    if (!rec) return p;
+    if (rec.ok) {
+      return {
+        ...p,
+        status: "LIVE_VERIFIED",
+        lastVerifiedAt: rec.at,
+        note: `Live-verified ${rec.at}: ${rec.detail}`,
+      };
+    }
+    return { ...p, lastVerifiedAt: rec.at, note: `Last live check FAILED (${rec.at}): ${rec.detail}. ${p.note}` };
+  });
+}
+
+export function providerReadiness(
+  verifications: Record<string, VerificationRecord> = {},
+): ProviderReadiness[] {
+  return applyVerifications(baseReadiness(), verifications);
+}
+
+function baseReadiness(): ProviderReadiness[] {
   return [
     {
       key: "content-rewards",

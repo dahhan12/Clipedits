@@ -1,4 +1,5 @@
 import { providerReadiness, type ReadinessStatus } from "@/lib/providers/readiness";
+import { getVerifications } from "@/lib/providers/verification";
 
 export const dynamic = "force-dynamic";
 
@@ -8,16 +9,26 @@ function statusClass(s: ReadinessStatus): string {
   return "bad";
 }
 
-export default function ProvidersPage() {
-  const rows = providerReadiness();
+export default async function ProvidersPage() {
+  const rows = providerReadiness(await getVerifications());
+  const verifiedCount = rows.filter((r) => r.status === "LIVE_VERIFIED").length;
   return (
     <div>
       <h2>Provider readiness</h2>
       <p className="muted">
-        Honest status of every external integration. No integration is
-        <strong> LIVE_VERIFIED</strong> yet — publishing actions are gated by real
-        capability, and sandbox modes never fabricate success. See
-        docs/PRODUCTION_READINESS_AUDIT.md.
+        Honest status of every external integration.{" "}
+        {verifiedCount === 0 ? (
+          <>
+            No integration is <strong>LIVE_VERIFIED</strong> yet
+          </>
+        ) : (
+          <>
+            <strong>{verifiedCount}</strong> integration{verifiedCount === 1 ? "" : "s"} LIVE_VERIFIED
+          </>
+        )}{" "}
+        — status only advances to LIVE_VERIFIED when <code>npm run verify:live</code> records a real
+        passing check; publishing is gated by real capability, and sandbox modes never fabricate
+        success. See docs/PRODUCTION_READINESS_AUDIT.md and docs/LIVE_VERIFICATION.md.
       </p>
       <div className="card">
         <table>
